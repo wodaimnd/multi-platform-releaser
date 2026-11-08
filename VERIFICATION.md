@@ -1383,3 +1383,101 @@ Agent 读工具 id 比读描述早。一个叫 `github_publisher` 的工具，�
 ### 14-5 备份
 
 `G:\AI PGRM\plugn\backup\publisher-toolrename-20261108-150537`（改名前三处一致）。
+
+## 15. npm-verify 索引延迟 + 三平台发布暴露的四个 bug
+
+### 15-1 起因
+
+发布「市场雷达 / ds外接插件 / 插件工坊」三个插件时，连续三次发布全部记为 `failed`，
+而实际 `npm-publish` 每次都成功了。`npm-verify` 在 publish 返回 201 后**立刻查一次**，
+查不到就 throw —— 但 npm 的索引是异步的。
+
+实测索引延迟：**约 70 秒**（0.4.1 与 0.4.2 两次均如此），而第一版只给了 54 秒窗口，仍然不够。
+
+### 15-2 npm-verify 的修复
+
+| 改动 | 理由 |
+|---|---|
+| 单次查询 → 6 次重试，阶梯 3/5/10/20/30/40 秒（约 108 秒） | publish 已返回 201，等待没有代价；误报要用户重跑，而 npm 拒绝重发同版本 |
+| 区分 `npm-verify-unreachable` 与 `npm-verify-failed` | 「registry 读不到」≠「发布没成功」，混在一起会误导用户 |
+| 每次重试写日志（第 N/M 次） | 长等待必须有可见进度，否则界面像卡死 |
+| 尊重 `signal`，可取消 | 108 秒的等待必须能被用户中断 |
+
+三种判定实测：
+
+```
+已存在版本      → 一次命中，1977ms，无等待
+不存在的版本    → 重试耗尽后报 npm-verify-failed（"未发布成功"）
+连不通 registry → registry-unreachable（"发布已提交，registry 读不到"）
+```
+
+### 15-3 三个插件发布时暴露的四个 bug
+
+**① 空 owner 被旧草稿覆盖**
+
+传 `owner: ''`（意思「各平台用自己账号」），但 `mergeForm` 用 `||` 链式取值，空串落到
+`draft.owner` —— 三个目录的草稿里都存着 `wodaimnd`。于是 Gitee 和 Codeberg 收到
+`POST /orgs/wodaimnd/repos` → 404。
+
+改成「显式空值生效」：只有**键不存在**才继承草稿，present-but-empty 是用户的决定。
+
+**② `form.platforms` 从未被赋值**
+
+插桩后看到 `form.platforms = undefined`。preflight 和 publish 都读这个字段，所以
+**无论请求什么，任务都退回 GitHub 单平台**。之前发 dsh-github-publisher 没踩到，
+是因为它的草稿里 platforms 恰好是四个。
+
+**③ 「主动不建 Release」被判成 partial**
+
+`createRelease: false` 时 release 步骤整步跳到 skipped，但没为任何 host 设置
+`steps.release`，它停在初始的 `pending`，聚合读成「没完成」。
+
+第一版修法用「步骤是否在计划里」判断 —— **错了**，因为 `buildStepIds` 永远包含
+release。正确判据是 per-hosting：`pending` 表示该平台从未收到 release 尝试，
+应算满足；只有 `failed` 才算缺口。
+
+**④ `dsh-forge` 的 repository 指向临时名**
+
+`package.json` 写着 `dsh-forge-probe`（诊断时的临时仓库名），scanner 读回后
+填进 `plugin.suggested.homepage`。已改为 `dsh-forge`，并把修正推到三个平台；
+测试残留的 probe 仓库已删除。
+
+### 15-4 GitHub 推送失败的真相
+
+0.4.2 发布时 GitHub push 三次重试全失败（`exit 128`）。逐项排查：
+
+| 检查 | 结果 |
+|---|---|
+| TCP github.com:443 | ✓ 通（20.205.243.166） |
+| curl github.com | ✓ 200，连接 0.09s |
+| git ls-remote（无 token） | ✓ 返回 649f75c |
+| git ls-remote（带 token） | ✓ 认证正常 |
+| 手动 git push | ✓ 成功 `649f75c..c3ba0f6` |
+
+结论：**瞬时网络不可用**（报 `Failed to connect after 21087 ms`），不是配置问题。
+插件 3 次重试没覆盖到，手动重试就过了。这是当前网络环境的事实，已记录。
+
+### 15-5 测试
+
+616 → **619**（三条回归断言，锁住 ① / ② / ③）。
+
+```
+123 + 99 + 59 + 7 + 9 + 7 + 6 + 30 + 18 + 29 + 35 + 239 = 619
+```
+
+`npm run check` + `npm test` exit 0。
+
+远端代码核验（GitHub `main` 上的 `lib/publisher.mjs`）：
+
+```
+ATTEMPTS = 6                  ✓
+重试阶梯 [3,5,10,20,30,40]     ✓
+per-host releaseOk            ✓
+owner 显式空值生效             ✓
+form.platforms 赋值           ✓
+```
+
+### 15-6 备份
+
+`G:\\AI PGRM\\plugn\\backup\\publish3-*`（三个插件发布前）
+`G:\\AI PGRM\\plugn\\backup\\publisher-toolrename-20261108-150537`（插件本轮改动前）
