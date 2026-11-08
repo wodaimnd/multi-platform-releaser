@@ -522,12 +522,16 @@ async function main() {
     // steps.release at 'pending' — which the aggregation read as unfinished work.
     const { readFileSync } = await import('node:fs')
     const src = readFileSync(new URL('../lib/publisher.mjs', import.meta.url), 'utf8')
-    const block = src.slice(src.indexOf('const releaseRan'))
-    assert.ok(block.length > 0, 'the release-ran guard exists')
-    const head = block.slice(0, 220)
-    assert.ok(head.includes("job.steps.some((entry) => entry.id === 'release')"),
-      'aggregation asks whether the step was scheduled at all')
-    assert.ok(head.includes('!releaseRan'), 'an unscheduled step is not a failure')
+    // `release` is always in the plan, so "was it scheduled" is the wrong question.
+    // What matters is the per-hosting status: a hosting whose release never
+    // dispatched stays 'pending', and that must count as satisfied.
+    const block = src.slice(src.indexOf('const releaseOk ='))
+    assert.ok(block.length > 0, 'the per-hosting release guard exists')
+    const head = block.slice(0, 260)
+    assert.ok(head.includes("steps.release === 'done'"), 'done counts')
+    assert.ok(head.includes("steps.release === 'skipped'"), 'an operator-skipped release counts')
+    assert.ok(head.includes("steps.release === 'pending'"),
+      'a hosting the step never reached counts as satisfied, not as unfinished')
   })
   await test('preflight: npm version collision is a blocking failure', async () => {
     // Simulate a remote state without network by monkey-patching nothing real:
