@@ -533,6 +533,33 @@ async function main() {
     assert.ok(head.includes("steps.release === 'pending'"),
       'a hosting the step never reached counts as satisfied, not as unfinished')
   })
+  // -- npm-verify：索引延迟不是发布失败 --------------------------------------
+  // npm accepted six publishes that the verify step then reported as failures,
+  // because it asked the registry once, immediately, and npm indexes async.
+
+  await test('a slow npm index never fails the publish', async () => {
+    const { readFileSync } = await import('node:fs')
+    const src = readFileSync(new URL('../lib/publisher.mjs', import.meta.url), 'utf8')
+
+    // Retry ladder exists and is generous enough for the measured ~90s lag.
+    assert.ok(/const ATTEMPTS = 7/.test(src), 'the verify retries instead of asking once')
+    const ladder = src.match(/const DELAYS_MS = \[([^\]]+)\]/)
+    assert.ok(ladder, 'the backoff ladder is explicit')
+    // Numeric separators (3_000) are valid JS literals but not Number() input.
+    const totalMs = ladder[1].split(',').reduce((sum, v) => sum + Number(v.trim().replace(/_/g, '')), 0)
+    assert.ok(totalMs >= 150000, 'the budget covers the observed lag: ' + totalMs + 'ms')
+
+    // Three outcomes must stay distinct.
+    assert.ok(src.includes('npm-verify-unreachable'), 'an unreadable registry is its own outcome')
+    assert.ok(src.includes('这是索引延迟，不是发布失败'),
+      'a package that exists but is not yet indexed is described as lag, not failure')
+    // The lag branch must warn + skip, not throw.
+    const lagBranch = src.slice(src.indexOf('这是索引延迟，不是发布失败'))
+    // Stop before the fall-through throw that follows the lag branch.
+    const tail = lagBranch.slice(0, lagBranch.indexOf('return') + 40)
+    assert.ok(tail.includes("'skipped'"), 'the step is skipped, so the job can finish')
+    assert.ok(!tail.includes('npm-verify-failed'), 'and it does not raise the failure code')
+  })
   await test('preflight: npm version collision is a blocking failure', async () => {
     // Simulate a remote state without network by monkey-patching nothing real:
     // we assert on the plan field instead, which is computed from npmState.

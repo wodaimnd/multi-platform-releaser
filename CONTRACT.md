@@ -39,7 +39,7 @@
 | 数据目录（Host） | `process.env.DSH_GITHUB_PUBLISHER_DIR`（测试隔离用）或 `$DSH_HOME/github-publisher` 或 `~/.dsh/github-publisher` |
 | 数据文件 | `config.json`(0600) / `history.json` / `drafts.json` |
 | Agent 工具名 | `multi_platform_releaser` |
-| 版本 | `0.4.3` |
+| 版本 | `0.4.4` |
 
 ## 2. 安全与鉴权（Host）
 
