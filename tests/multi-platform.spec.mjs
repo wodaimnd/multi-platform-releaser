@@ -472,6 +472,63 @@ async function main() {
     assert.equal(ownerCheck.status, 'pass', 'a blank owner is a choice, not a blocker')
     assert.ok(!real.blocking.includes('owner'))
   })
+  // -- 草稿 / owner / platforms 的三个真缺陷（多插件发布时暴露）---------------
+
+  await test('mergeForm: an explicitly blank owner beats a saved draft', async () => {
+    const { mergeForm } = await import('../lib/publisher.mjs')
+    const plugin = { name: 'probe', keywords: [], description: '' }
+    const account = { login: 'wodaimnd' }
+    // Regression: a stale draft owner resurrected `wodaimnd` and was sent to Gitee
+    // and Codeberg as an organisation, both of which answered 404.
+    const withDraft = mergeForm({
+      defaults: {},
+      draft: { owner: 'wodaimnd', platforms: ['github'] },
+      request: { platforms: ['github', 'gitee', 'codeberg'], owner: '' },
+      plugin,
+      account,
+    })
+    assert.equal(withDraft.owner, '', 'a cleared field must not be refilled from the draft')
+    // Omitting the key entirely still lets the draft speak.
+    const omitted = mergeForm({
+      defaults: {},
+      draft: { owner: 'saved-org' },
+      request: { platforms: ['gitee'] },
+      plugin,
+      account,
+    })
+    assert.equal(omitted.owner, 'saved-org', 'a missing key may inherit')
+  })
+
+  await test('mergeForm: form.platforms carries the requested selection', async () => {
+    // Regression: form.platforms was left undefined, so preflight and publish both
+    // fell back to GitHub-only no matter what the caller asked for.
+    const { mergeForm } = await import('../lib/publisher.mjs')
+    const plugin = { name: 'probe', keywords: [], description: '' }
+    const f = mergeForm({
+      defaults: {},
+      draft: {},
+      request: { platforms: ['github', 'gitee', 'codeberg', 'npm'], owner: '' },
+      plugin,
+      account: { login: 'wodaimnd' },
+    })
+    // normalizeSelection reorders by registry order (npm sits between github and
+    // gitee), which the step planner relies on — compare as a set, not a sequence.
+    assert.deepEqual([...f.platforms].sort(), ['codeberg', 'gitee', 'github', 'npm'].sort())
+    assert.equal(f.host, 'github', 'the primary hosting is recorded too')
+  })
+
+  await test('a publish without a Release is not reported as partial', async () => {
+    // Regression: createRelease:false skips the whole step, leaving each hosting's
+    // steps.release at 'pending' — which the aggregation read as unfinished work.
+    const { readFileSync } = await import('node:fs')
+    const src = readFileSync(new URL('../lib/publisher.mjs', import.meta.url), 'utf8')
+    const block = src.slice(src.indexOf('const releaseRan'))
+    assert.ok(block.length > 0, 'the release-ran guard exists')
+    const head = block.slice(0, 220)
+    assert.ok(head.includes("job.steps.some((entry) => entry.id === 'release')"),
+      'aggregation asks whether the step was scheduled at all')
+    assert.ok(head.includes('!releaseRan'), 'an unscheduled step is not a failure')
+  })
   await test('preflight: npm version collision is a blocking failure', async () => {
     // Simulate a remote state without network by monkey-patching nothing real:
     // we assert on the plan field instead, which is computed from npmState.

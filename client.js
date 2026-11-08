@@ -39,7 +39,7 @@ window.__ModuleLoader__.load({
     /** Row order among the shell's global panel rows (Plugins 0, Schedule 10). */
     const PANEL_ORDER = 50
 
-    const CLIENT_VERSION = '0.4.0'
+    const CLIENT_VERSION = '0.4.1'
     const TOKEN_HEADER = 'x-dsh-github-publisher-token'
     const POLL_MS = 650
     const DRAFT_DEBOUNCE_MS = 400
