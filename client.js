@@ -39,7 +39,7 @@ window.__ModuleLoader__.load({
     /** Row order among the shell's global panel rows (Plugins 0, Schedule 10). */
     const PANEL_ORDER = 50
 
-    const CLIENT_VERSION = '0.3.4'
+    const CLIENT_VERSION = '0.4.0'
     const TOKEN_HEADER = 'x-dsh-github-publisher-token'
     const POLL_MS = 650
     const DRAFT_DEBOUNCE_MS = 400
@@ -756,6 +756,7 @@ window.__ModuleLoader__.load({
       'toast.copied': '已复制',
       'toast.publishStarted': '开始发布 {name}',
       'toast.publishSucceeded': '{owner}/{repo} 发布成功',
+      'toast.publishPartial': '部分平台完成：{ok}/{total} 个仓库平台已发布，详情见结果卡',
       'toast.publishFailed': '发布失败：{message}',
       'toast.publishCancelled': '发布已取消',
       'toast.draftSaved': '草稿已保存',
@@ -1336,6 +1337,7 @@ window.__ModuleLoader__.load({
       'toast.copied': 'Copied',
       'toast.publishStarted': 'Publishing {name}',
       'toast.publishSucceeded': '{owner}/{repo} published successfully',
+      'toast.publishPartial': 'Partly finished: {ok}/{total} repository hostings published — see the result card',
       'toast.publishFailed': 'Publish failed: {message}',
       'toast.publishCancelled': 'Publish cancelled',
       'toast.draftSaved': 'Draft saved',
@@ -2626,6 +2628,21 @@ window.__ModuleLoader__.load({
       let draftPromise = null
       let draftPayload = null
       let pollTimer = null
+      /**
+       * Adaptive poll interval.
+       *
+       * Fixed 650ms polled ~50 times during a four-platform publish, and the long
+       * steps (push / release / npm) return an unchanged snapshot for seconds at a
+       * time. Start fast — the first seconds are where visible progress happens —
+       * then widen, and snap back whenever a step or its status actually changes.
+       */
+      let pollBackoff = 0
+      function nextPollDelay(baseMs) {
+        const base = typeof baseMs === 'number' && baseMs > 0 ? baseMs : 650
+        const ladder = [1, 1, 1.5, 2, 3, 4]
+        const factor = ladder[Math.min(pollBackoff, ladder.length - 1)]
+        return Math.round(base * factor)
+      }
       let pollSeq = 0
       let jobWaiters = []
       let toastTimer = null
@@ -3277,6 +3294,19 @@ window.__ModuleLoader__.load({
             }), 'success')
           }
           await loadState({ silent: true })
+        } else if (job.status === 'partial') {
+          /*
+           * Some remotes took the code and some did not. Show the result card so
+           * the per-host table is visible, but announce it as a warning with counts
+           * — never as "cancelled", which read as "nothing happened".
+           */
+          const result = job.result
+          setState({ publishedResult: result, error: null })
+          setState({ preflightStale: true })
+          const hosts = result && Array.isArray(result.hosts) ? result.hosts : []
+          const okCount = hosts.filter(function fine(entry) { return entry.status === 'succeeded' }).length
+          showToast(t('toast.publishPartial', { ok: String(okCount), total: String(hosts.length) }), 'warn')
+          await loadState({ silent: true })
         } else if (job.status === 'failed') {
           const info = job.error || {}
           const message = toText(info.message) !== '' ? toText(info.message) : t('error.publish')
@@ -3291,6 +3321,21 @@ window.__ModuleLoader__.load({
       function startPolling(jobId) {
         stopPolling()
         const sequence = pollSeq
+        pollBackoff = 0
+        /**
+         * Reset the backoff whenever the job actually moved — a step turning over,
+         * a step finishing, or a new log line. Without this the interval only ever
+         * grows, and the tail of a publish would feel unresponsive exactly when the
+         * user is waiting for the last step.
+         */
+        let lastShape = ''
+        const shapeOf = function shape(snapshot) {
+          if (!snapshot) return ''
+          const steps = Array.isArray(snapshot.steps) ? snapshot.steps : []
+          const moved = steps.map(function one(step) { return step.id + ':' + step.status }).join(',')
+          const logs = Array.isArray(snapshot.logs) ? snapshot.logs.length : 0
+          return moved + '|' + logs + '|' + (snapshot.status || '')
+        }
         const loop = async function pollLoop() {
           if (disposed || sequence !== pollSeq) return
           const snapshot = await pollOnce(jobId)
@@ -3305,9 +3350,16 @@ window.__ModuleLoader__.load({
             }
             return
           }
+          const shape = shapeOf(snapshot)
+          if (shape !== lastShape) {
+            lastShape = shape
+            pollBackoff = 0
+          } else {
+            pollBackoff = Math.min(pollBackoff + 1, 5)
+          }
           pollTimer = setTimeout(function nextPoll() {
             loop()
-          }, pollMs)
+          }, nextPollDelay(pollMs))
         }
         loop()
       }
@@ -3753,14 +3805,77 @@ window.__ModuleLoader__.load({
 
     function Field(props) {
       const p = props || {}
-      const hint = p.hint ? h('span', { className: 'dgp-field-hint' }, p.hint) : null
-      const error = p.error ? h('span', { className: 'dgp-field-error' }, p.error) : null
+      // A stable id per field so the message can be referenced by the control.
+      const msgId = React.useMemo(function makeMsgId() {
+        return 'dgp-field-msg-' + Math.random().toString(36).slice(2, 8)
+      }, [])
+      const message = p.error || p.hint || null
+      const hint = message
+        ? h('span', {
+            className: p.error ? 'dgp-field-error' : 'dgp-field-hint',
+            id: msgId,
+          }, message)
+        : null
+
+      /*
+       * Attach the description to the control itself. Without this a screen
+       * reader reads "Owner, edit text" and never "this owner does not exist".
+       * Cloning keeps every existing call site working and leaves controls that
+       * carry their own aria attributes alone.
+       */
+      let children = p.children
+      if (message && React.isValidElement) {
+        /*
+         * Attach the description to the actual control.
+         *
+         * Some fields pass a single input, some pass an array (input + action
+         * button), some pass a wrapper. React.isValidElement is false for arrays,
+         * which silently skipped every multi-child field — 4 message ids rendered
+         * and 0 descriptions attached before this walked the tree.
+         */
+        const describe = function describe(node) {
+          if (Array.isArray(node)) {
+            let attached = false
+            const mapped = node.map(function one(child, index) {
+              const next = attached ? child : describe(child)
+              if (next !== child) attached = true
+              // A Field's children never reorder, so the index is a stable key —
+              // React warns about unkeyed elements in an array rendered as siblings.
+              if (React.isValidElement(next)) return React.cloneElement(next, { key: 'field-child-' + index })
+              return next
+            })
+            return attached ? mapped : node
+          }
+          if (!React.isValidElement(node)) return node
+          const props = node.props || {}
+          const looksLikeControl = node.type === 'input'
+            || node.type === 'select'
+            || node.type === 'textarea'
+            || typeof props.onChange === 'function'
+            || props.value !== undefined
+            || props['aria-describedby'] !== undefined
+          if (looksLikeControl) {
+            const existing = props['aria-describedby']
+            return React.cloneElement(node, {
+              'aria-describedby': existing ? existing + ' ' + msgId : msgId,
+              'aria-invalid': p.error ? true : props['aria-invalid'],
+            })
+          }
+          if (props.children !== undefined) {
+            const inner = describe(props.children)
+            if (inner !== props.children) return React.cloneElement(node, { children: inner })
+          }
+          return node
+        }
+        children = describe(p.children)
+      }
+
       return h('div', { className: 'dgp-field' + (p.className ? ' ' + p.className : '') },
         h('div', { className: 'dgp-field-head' },
           h('label', { className: 'dgp-field-label', htmlFor: p.htmlFor || undefined }, p.label),
           p.optional ? h('span', { className: 'dgp-field-optional' }, t('common.optional')) : null),
-        p.children,
-        error || hint)
+        children,
+        hint)
     }
 
     function TextInput(props) {
@@ -3777,6 +3892,8 @@ window.__ModuleLoader__.load({
         id: p.id || undefined,
         autoComplete: p.autoComplete || 'off',
         spellCheck: false,
+        'aria-describedby': p['aria-describedby'] || undefined,
+        'aria-invalid': p['aria-invalid'] || undefined,
         onChange: function onChange(event) {
           if (typeof p.onChange === 'function') p.onChange(event && event.target ? event.target.value : '')
         },
@@ -3793,6 +3910,8 @@ window.__ModuleLoader__.load({
         id: p.id || undefined,
         rows: typeof p.rows === 'number' ? p.rows : 3,
         spellCheck: false,
+        'aria-describedby': p['aria-describedby'] || undefined,
+        'aria-invalid': p['aria-invalid'] || undefined,
         onChange: function onChange(event) {
           if (typeof p.onChange === 'function') p.onChange(event && event.target ? event.target.value : '')
         },
@@ -3807,6 +3926,8 @@ window.__ModuleLoader__.load({
         value: p.value === undefined || p.value === null ? '' : String(p.value),
         disabled: p.disabled === true,
         id: p.id || undefined,
+        'aria-describedby': p['aria-describedby'] || undefined,
+        'aria-invalid': p['aria-invalid'] || undefined,
         onChange: function onChange(event) {
           if (typeof p.onChange === 'function') p.onChange(event && event.target ? event.target.value : '')
         },
@@ -3894,6 +4015,8 @@ window.__ModuleLoader__.load({
           value: draft,
           placeholder: p.placeholder || '',
           disabled: disabled,
+          'aria-describedby': p['aria-describedby'] || undefined,
+          'aria-invalid': p['aria-invalid'] || undefined,
           onChange: function onChange(event) { setDraft(event && event.target ? event.target.value : '') },
           onKeyDown: function onKeyDown(event) {
             if (!event || event.key !== 'Enter') return
@@ -4072,15 +4195,99 @@ window.__ModuleLoader__.load({
           : null)
     }
 
+    /**
+     * A dialog that behaves like one.
+     *
+     * Three things a floating layer owes the user, none of which were here:
+     *   · Esc closes it — only the backdrop and the X worked, so a keyboard user
+     *     had no way out;
+     *   · focus stays inside while open — otherwise Tab walks onto the page behind
+     *     the backdrop, where the focus ring is invisible;
+     *   · focus returns to whatever opened it, instead of resetting to the top of
+     *     the document.
+     *
+     * The listener lives on document rather than on the dialog: a keydown inside a
+     * child input never bubbles to a sibling that was never focused.
+     */
     function Modal(props) {
       const p = props || {}
-      return h('div', { className: 'dgp-modal-layer', role: 'dialog', 'aria-modal': 'true', 'aria-label': p.title || '' },
-        h('div', { className: 'dgp-modal-backdrop', onClick: p.onClose || undefined }),
+      const layerRef = React.useRef(null)
+      const restoreRef = React.useRef(null)
+      const titleId = React.useMemo(function makeId() {
+        return 'dgp-modal-title-' + Math.random().toString(36).slice(2, 8)
+      }, [])
+
+      React.useEffect(function trapAndDismiss() {
+        if (typeof document === 'undefined') return undefined
+        restoreRef.current = document.activeElement
+
+        function focusables() {
+          const root = layerRef.current
+          if (!root || typeof root.querySelectorAll !== 'function') return []
+          const found = root.querySelectorAll(
+            'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+          )
+          return Array.prototype.slice.call(found).filter(function visible(el) {
+            return el.offsetParent !== null || el === document.activeElement
+          })
+        }
+
+        function onKeyDown(event) {
+          if (!event) return
+          if (event.key === 'Escape') {
+            if (typeof event.preventDefault === 'function') event.preventDefault()
+            if (typeof event.stopPropagation === 'function') event.stopPropagation()
+            if (typeof p.onClose === 'function') p.onClose()
+            return
+          }
+          if (event.key !== 'Tab') return
+          const items = focusables()
+          if (items.length === 0) {
+            if (typeof event.preventDefault === 'function') event.preventDefault()
+            if (layerRef.current && typeof layerRef.current.focus === 'function') layerRef.current.focus()
+            return
+          }
+          const first = items[0]
+          const last = items[items.length - 1]
+          const active = document.activeElement
+          if (event.shiftKey && (active === first || active === layerRef.current)) {
+            if (typeof event.preventDefault === 'function') event.preventDefault()
+            last.focus()
+          } else if (!event.shiftKey && active === last) {
+            if (typeof event.preventDefault === 'function') event.preventDefault()
+            first.focus()
+          }
+        }
+
+        document.addEventListener('keydown', onKeyDown, true)
+        const items = focusables()
+        if (items.length > 0 && typeof items[0].focus === 'function') items[0].focus()
+        else if (layerRef.current && typeof layerRef.current.focus === 'function') layerRef.current.focus()
+
+        return function release() {
+          document.removeEventListener('keydown', onKeyDown, true)
+          const back = restoreRef.current
+          if (back && typeof back.focus === 'function' && typeof document.contains === 'function' && document.contains(back)) {
+            back.focus()
+          }
+        }
+      }, [p.onClose])
+
+      return h('div', {
+        className: 'dgp-modal-layer',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-labelledby': titleId,
+        tabIndex: -1,
+        ref: layerRef,
+      },
+        h('div', { className: 'dgp-modal-backdrop', onClick: p.onClose || undefined, 'aria-hidden': 'true' }),
         h('div', { className: 'dgp-modal' },
           h('div', { className: 'dgp-modal-head' },
-            h('h2', { className: 'dgp-modal-title' }, p.title || ''),
+            h('h2', { className: 'dgp-modal-title', id: titleId }, p.title || ''),
             h('span', { className: 'dgp-spacer' }),
-            h(IconBtn, { icon: 'close', title: t('common.close'), onClick: p.onClose || undefined })),
+            h(IconBtn, { icon: 'close', title: t('common.close'), onClick: p.onClose || undefined })
+          ),
           h('div', { className: 'dgp-modal-body' }, p.children),
           p.footer ? h('div', { className: 'dgp-modal-foot' }, p.footer) : null))
     }
@@ -6865,7 +7072,19 @@ window.__ModuleLoader__.load({
       '.dgp-account-warn{font-size:10px;color:var(--dsw-alias-state-warn-primary);}',
       '.dgp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .12s ease,border-color .12s ease,opacity .12s ease;}',
       '.dgp-btn:hover{background:var(--dsw-alias-bg-layer-2);}',
-      '.dgp-btn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px;}',
+            '/* Blanket focus ring: every focusable control gets one unless a rule below overrides it. */',
+      '.dgp-root :focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:2px;}',
+      '/* Inputs already draw a border on focus; the ring sits just outside it. */',
+      '.dgp-input:focus-visible,.dgp-search-input:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px;}',
+      '/* The chip input lives inside a bordered box that shows the ring instead. */',
+      '.dgp-chip-input:focus-visible{outline:none;}',
+      '.dgp-chips:focus-within{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px;}',
+      '/* Icon buttons are square and small; inset the ring so it stays inside the 32px box. */',
+      '.dgp-icon-btn:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:-2px;}',
+      '.dgp-seg-btn:focus-visible,.dgp-settings-tab:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:-2px;}',
+      '/* The switch is a label; ring the label so the whole control reads as focused. */',
+      '.dgp-toggle:focus-within{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:2px;border-radius:6px;}',
+'.dgp-btn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px;}',
       '.dgp-btn:disabled{opacity:.45;cursor:default;}',
       '.dgp-btn-primary{background:var(--dsw-alias-brand-primary);border-color:transparent;color:var(--dsw-alias-bg-base);}',
       '.dgp-btn-primary:hover{background:var(--dsw-alias-brand-primary);filter:brightness(1.06);}',
@@ -6876,7 +7095,7 @@ window.__ModuleLoader__.load({
       '.dgp-btn-link{height:auto;padding:0;border:0;background:transparent;color:var(--dsw-alias-brand-primary);}',
       '.dgp-btn-label{display:inline-block;}',
       '.dgp-header-btn{flex:none;}',
-      '.dgp-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;flex:none;border:0;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;}',
+      '.dgp-icon-btn{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;padding:4px;margin:-4px;flex:none;border:0;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;}',
       '.dgp-icon-btn:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);}',
       '.dgp-icon-btn:disabled{opacity:.4;cursor:default;}',
       '.dgp-link{display:inline-flex;align-items:center;gap:4px;color:var(--dsw-alias-brand-primary);font-size:12px;text-decoration:none;cursor:pointer;background:transparent;border:0;font-family:inherit;padding:0;}',
@@ -6936,7 +7155,7 @@ window.__ModuleLoader__.load({
       '.dgp-card-toggle svg{transition:transform .15s ease;flex:none;}',
       '.dgp-card[data-open="1"] .dgp-card-toggle svg{transform:rotate(90deg);}',
       '.dgp-card-sum{margin:2px 0 0;font-size:11.5px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere;}',
-      '.dgp-card-toggle-btn{flex:none;height:24px;padding:0 8px;font-size:11px;}',
+      '.dgp-card-toggle-btn{flex:none;min-height:32px;padding:4px 8px;font-size:11px;}',
       '.dgp-card-heading{flex:1 1 auto;min-width:0;}',
       '.dgp-card-title{margin:0;font-size:13px;font-weight:700;letter-spacing:-.01em;}',
       '.dgp-card-sub{margin:2px 0 0;font-size:11px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere;}',

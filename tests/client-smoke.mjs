@@ -1621,6 +1621,36 @@ await test('client-side validation catches invalid names, owners and topics', fu
   assert.ok(tooManyTopics.topics)
 })
 
+  // -- 轮询退避与 partial 播报（结构契约）-------------------------------------
+
+  await test('the poller backs off on unchanged snapshots and snaps back on movement', function checkBackoff() {
+    // Fixed 650ms polled ~50 times per publish while long steps returned identical
+    // documents. The ladder must exist, widen, and stay capped.
+    assert.ok(source.indexOf('function nextPollDelay') >= 0, 'an adaptive interval is computed')
+    assert.ok(source.indexOf('nextPollDelay(pollMs)') >= 0, 'the poller uses it instead of the constant')
+    assert.ok(/const ladder = \[1, 1, 1\.5, 2, 3, 4\]/.test(source), 'the ladder is explicit')
+    assert.ok(source.indexOf('pollBackoff = 0') >= 0, 'movement resets the backoff')
+    assert.ok(source.indexOf('pollBackoff = Math.min(pollBackoff + 1') >= 0, 'an unchanged snapshot widens it')
+    // The cap keeps a stalled job reporting within a few seconds.
+    const cap = source.match(/const ladder = \[([^\]]+)\]/)
+    assert.ok(cap, 'the ladder is readable')
+    const maxFactor = Math.max.apply(null, cap[1].split(',').map(function num(v) { return Number(v.trim()) }))
+    assert.ok(maxFactor <= 4, 'the widest interval stays under 4x the base: ' + maxFactor)
+  })
+
+  await test('a partial job is announced as partial, never as cancelled', function checkPartialBranch() {
+    // Regression: partial fell through to the else and read 'publish cancelled',
+    // which says the opposite of 'some hostings did get the code'.
+    assert.ok(source.indexOf("job.status === 'partial'") >= 0, 'partial has its own branch')
+    assert.ok(source.indexOf("t('toast.publishPartial'") >= 0, 'and its own wording')
+    // The partial branch must keep the result so the per-host table renders.
+    const partialBlock = source.slice(source.indexOf("job.status === 'partial'"))
+    const head = partialBlock.slice(0, 1400)
+    assert.ok(head.indexOf('publishedResult: result') >= 0, 'the per-host result is kept')
+    assert.ok(head.indexOf("'warn'") >= 0, 'partial is a warning, not an error')
+    // Both dictionaries carry the phrasing, or one locale falls back silently.
+    assert.ok(api.zh['toast.publishPartial'] && api.en['toast.publishPartial'], 'both locales define it')
+  })
 await test('format helpers and step labels localize correctly', function formatHelpers() {
   assert.equal(api.formatBytes(2048), '2 KB')
   assert.ok(api.formatBytes(0).indexOf('0') === 0)

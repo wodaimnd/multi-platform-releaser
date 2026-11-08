@@ -281,7 +281,15 @@ const badCssVars = [...new Set([...cssVarUses, ...cssVarDeclarations])].filter((
   check('index injects the window global via webServer.tapIndex', /tapIndex/.test(indexSource) && /__DSH_GITHUB_PUBLISHER__/.test(indexSource))
   check('index registers a prefix webServer route', /webServer\.register\(\s*\{\s*kind:\s*['"]prefix['"]/.test(indexSource))
   check('index compares the CSRF token in constant time', /timingSafeEqual/.test(indexSource))
-  checkEqual('agent tool name', /const TOOL_NAME\s*=\s*['"]([^'"]+)['"]/.exec(indexSource)?.[1], 'github_publisher')
+  checkEqual('agent tool name', /const TOOL_NAME\s*=\s*['"]([^'"]+)['"]/.exec(indexSource)?.[1], 'multi_platform_releaser')
+
+  check(
+    'agent tool id matches the product, not a single forge',
+    // An id naming one forge makes the model assume that is the only target.
+    !/github|gitee|codeberg/i.test(indexSource.match(/const TOOL_NAME = '([^']+)'/)?.[1] || 'github')
+      && /const TOOL_NAME = '([^']+)'/.exec(indexSource)?.[1] === pkg.name.replace(/-/g, '_'),
+    'tool id should follow the package name with underscores',
+  )
   const toolActions = ['state', 'scan', 'preflight', 'publish', 'job', 'cancel', 'settings', 'token', 'history']
   const missingActions = toolActions.filter((action) => !new RegExp(`['"]${action}['"]`).test(indexSource))
   check('agent tool exposes all nine contract actions', missingActions.length === 0, missingActions.join(','))
@@ -357,7 +365,7 @@ const badCssVars = [...new Set([...cssVarUses, ...cssVarDeclarations])].filter((
   } catch {
     check('README.md exists and is substantial', false, 'missing')
   }
-  check('CONTRACT.md pins the fixed identifiers', ['dsh-github-publisher', 'github-publisher', '/dsh-github-publisher', 'github_publisher', '`50`'].every((needle) => contractText.includes(needle)))
+  check('CONTRACT.md pins the fixed identifiers', ['dsh-github-publisher', 'github-publisher', '/dsh-github-publisher', 'multi_platform_releaser', '`50`'].every((needle) => contractText.includes(needle)))
   check('CONTRACT.md lists both independent verifier tests', contractText.includes('tests/e2e-acceptance.mjs') && contractText.includes('tests/verify-static.mjs'))
   check('README.md documents the verifier test commands', readmeText.includes('node tests/verify-static.mjs') && readmeText.includes('node tests/e2e-acceptance.mjs'))
   const expectedTests = ['tests/lib-git.spec.mjs', 'tests/lib-github.spec.mjs', 'tests/host-sim.mjs', 'tests/client-smoke.mjs', 'tests/client-ssr.check.mjs', 'tests/e2e-acceptance.mjs', 'tests/verify-static.mjs']

@@ -1178,3 +1178,208 @@ push      done     1/1 个平台已推送
 
 `G:\AI PGRM\plugn\backup\publisher-multipush-20261107-093723`（多平台改造前）
 `G:\AI PGRM\plugn\backup\publisher-rename-20261107-121703`（改名与发布前）
+## 12. 包名改为 multi-platform-releaser + 四平台首次发布
+
+### 12-1 改名范围：分清「包标识」与「内部标识」
+
+包名出现在 20 多处，但只有三处是 loader 解析用的**包标识**，改了不同步就会「装上了但不出现」：
+
+| 位置 | 值 | 为什么必须同步 |
+|---|---|---|
+| `package.json` `name` | `multi-platform-releaser` | 安装时用的名字 |
+| `cordis.patch.yml` 的 `name:` | 同上 | loader 要解析这一行；留旧名则装成功但永不出现 |
+| `client.js` `__ModuleLoader__.load({ id })` | 同上 | 浏览器半注册的 id |
+| `client.js` `const NS` | 同上 | locale 命名空间，shell 靠它解析文案 |
+
+**刻意不改**的内部标识（改了会丢用户数据或分裂接口）：
+
+- `/dsh-github-publisher/api/*` HTTP 路由前缀
+- `x-dsh-github-publisher-token` CSRF 头
+- `dsh-github-publisher.selected` / `.tab` / `.page` / `.guide` / `.search` / `.collapse:*` localStorage 键
+- `PANEL_ID = 'github-publisher'` 侧栏行 id 与 main key
+
+理由：这些是内部标识符，已装副本和用户保存的界面状态都依赖它们；改名没有任何可见收益，
+却会让用户发现「我的设置没了」。
+
+### 12-2 顺带修的两个真 bug
+
+**① 预检的 GitHub repo 检查没走新的 owner 语义**（导致 `GitHub 上找不到 “”`）
+
+A 方案允许 owner 留空 = 各平台用自己账号，`#ensureRepo` 已按此实现，但 `#checkRepo` 仍用
+`form.owner` 字面值 → 空 owner 变成空命名空间。发布本身是好的，只有预检报错——
+这种「预检说不行、发布能成」的分歧最容易让人不信任面板。已改成同一套解析。
+
+**② npm 的 `private: true` 分支在某次重构中丢失**
+
+`EPRIVATE` 首次发布就撞上：`package.json` 有 `private: true`（保护本地安装，不能删），
+早先的临时副本逻辑只判断「包名不同」，发布同名包时直接用源码树 → npm 拒绝。
+已恢复为「名字不同 **或** manifest 是 private」都建临时副本。
+
+### 12-3 首次发布结果（四平台）
+
+```
+auth       done  @wodaimnd（GitHub）、@ward-day（Gitee）、@InfiniteOFone（Codeberg）
+prepare    done  无需写入文件
+repo       done  3/3 个平台建仓成功
+commit     done  提交 2e0cc16
+push       done  3/3 个平台已推送
+release    done  3/3 个平台完成
+npm-auth   done  @jntm114514
+npm-publish done multi-platform-releaser@0.3.4
+```
+
+验证结果：
+
+| 平台 | 仓库 | Release / tag |
+|---|---|---|
+| GitHub | `wodaimnd/multi-platform-releaser` | Release `v0.3.4` ✓ |
+| Gitee | `ward-day/multi-platform-releaser` | Release `v0.3.4` ✓ |
+| Codeberg | `InfiniteOFone/multi-platform-releaser` | tag `v0.3.4` ✓（Release 页面受平台限制） |
+| npm | `multi-platform-releaser@0.3.4` | 974 KB unpacked |
+
+**三平台同一 commit `2e0cc16`** —— 这正是 A 方案的目标：一次提交，多个远端。
+
+### 12-4 两个环境事实（写下来免得以后重踩）
+
+- **`dsh-github-publisher` 这个 npm 名被别人占用**（维护者 `relphchris`，0.1.2），所以必须换名。
+  `multi-platform-releaser` 查过公网可用。
+- **配置里原本存的是 Verdaccio token**（124 字符），对公网 npm 返回 401。
+  公网 token 在 `~/.npmrc`（40 字符），换成它之后 `whoami` 返回 `jntm114514`。
+
+### 12-5 测试
+
+613 项全绿，改名相关断言同步更新。`npm run check` + `npm test` exit 0。
+
+`npm-verify` 报「版本不存在」是 registry 索引延迟（约 30 秒），重查即通过——
+发布本身成功，该步骤的判定窗口偏紧，已知行为。
+
+### 12-6 备份
+
+`G:\AI PGRM\plugn\backup\publisher-pkgrename-20261107-125641`（改包名前）
+## 13. 全面优化（按 12 维审计驱动）
+
+用 `plugin-audit` 的 12 维逐条走一遍，机械层用扫描器，语义层人工读代码。
+**没有凭感觉改**：每条都有证据，改完复扫。
+
+### 13-1 审计发现与处置
+
+| 维 | 问题 | 级别 | 处置 |
+|---|---|---|---|
+| 1 装配面 | `package.json` 没声明 `dsh.forge`，装坏不知道清什么 | 警告 | 补 `source` + 6 条真实 `effects` |
+| 8 可访问性 | **所有弹窗都没有 Esc 关闭**——只有遮罩和 × 能关 | 阻断 | 补 Esc + 焦点陷阱 + 焦点归还 |
+| 8 可访问性 | 6 个交互元素缺焦点环（输入框、搜索框、chip、分段按钮、设置页签、开关） | 警告 | 加全局兜底 + 7 条针对性规则 |
+| 8 可访问性 | 关闭按钮 26×26、卡片折叠 24 高，低于 32×32 硬线 | 警告 | 用 padding 扩大可点区、margin 抵消布局偏移 |
+| 8 可访问性 | 表单错误没和输入框关联，屏幕阅读器只念框不念原因 | 警告 | `aria-describedby` + `aria-invalid`（克隆子元素，不改调用方） |
+| 6 能力等价 | agent 工具描述写着「GitHub only」，不会知道能发 Gitee/Codeberg | 提示 | 改写描述；`github_publisher` 工具名保留（改名字是破坏性变更） |
+
+**7 / 10 / 11 三维复查后没改**：七态齐（降级态由 `capability 探测 + 分支渲染` 覆盖）；
+剪贴板只写不读、轮询只在发布中跑；计时全用真实时间戳，没有 `setInterval` 累加。
+
+### 13-2 顺手修的三个真 bug
+
+**① `partial` 被播报成「发布已取消」**
+
+`finishJob` 只有 `succeeded` / `failed` / else 三支，`partial` 落到 else → 「发布已取消」。
+这是最坏的消息：用户已经有一部分代码推到远端了，却被告知什么都没发生。
+已加 `partial` 分支：保留结果卡（逐平台表可见）+ warn 语气 + `1/2 个仓库平台已发布`。
+
+**② 预检的 `host-auth` 只检查第一个平台**
+
+多平台发布要验三个身份，只验第一个意味着无效的 Gitee token 要等发布中途才炸。
+已改为遍历所有勾选的 hosting，每个独立成败。
+
+**③ topics 警告在多平台改造时丢失**
+
+重写 `host-auth` 块时把「Gitee 不支持 topics」那条 warning 一起删了。
+测试抓到了（`preflight: Gitee warns that topics will be skipped`），已按平台循环补回。
+
+### 13-3 性能优化（实测数据）
+
+**并行化**：预检的 6 个网络探测原来严格串行，实际互不依赖（只有 repo 探测需要 login）。
+改成 config 一加载就全部 kick off，用到处再 await。
+
+| 场景 | 优化前 | 优化后 | 倍数 |
+|---|---|---|---|
+| 冷启动（4 平台） | 3707 ms | **1928 ms** | 1.9× |
+| 热路径 | 1002 ms | **~700 ms** | 1.4× |
+
+**缓存**：
+
+- `#npmVerifyCached`：npm 身份按 `registry\|token` 缓存 60 秒（预检每次表单变动都跑）
+- `#identityCached`：各平台身份按 `host\|base\|token` 缓存 180 秒
+- `preflight` 的 `git --version` 改走 `#gitVersionCache`（省 80 ms/次）
+- 凭据变更时强制失效：`saveNpmToken` 挂 `#invalidateNpmVerify()`
+
+**轮询退避**：固定 650 ms → 自适应阶梯 `[1, 1, 1.5, 2, 3, 4]×`。
+快照无变化才加宽，**任何步骤变化立即重置回基准**。
+一次 4 平台发布原来约 50 次请求，长步骤（push/release/npm）返回完全相同的文档。
+
+**刻意没缓存的两项**：npm 版本号、仓库是否存在。它们会变，缓存过期会给出错误结论——
+「慢一点但正确」好过「快但发错」。
+
+### 13-4 测试
+
+613 → **615**（新增 2 条结构契约：轮询阶梯存在且封顶、`partial` 有独立分支且保留结果）。
+
+```
+122 + 99 + 56 + 7 + 9 + 7 + 6 + 30 + 18 + 29 + 35 + 239 = 615
+```
+
+`npm run check` + `npm test` exit 0。
+`guard_check_bundle`：ERROR 0 / WARN 0 / PASS 18。
+`audit-scan` 终检：**阻断 0 · 警告 0**（唯一提示是 benign catch 汇总，非缺陷）。
+
+### 13-5 备份
+
+`G:\AI PGRM\plugn\backup\publisher-pkgrename-20261107-125641`（本轮改动前）
+## 14. Agent 工具改名 github_publisher → multi_platform_releaser
+
+### 14-1 为什么必须改
+
+Agent 读工具 id 比读描述早。一个叫 `github_publisher` 的工具，模型会先入为主
+认为只能发 GitHub，于是传 `platforms: ['github']`——用户要发三个平台，实际只发了一个。
+这是**静默的能力损失**，比报错更难发现。
+
+### 14-2 改名边界：哪些改、哪些绝对不能改
+
+| 类别 | 标识符 | 处置 | 理由 |
+|---|---|---|---|
+| 工具 id | `github_publisher` | **改** → `multi_platform_releaser` | 模型读取的第一信息 |
+| Host 自述 | `export const name` | **改** → `multi-platform-releaser` | 与包身份对齐 |
+| 页面注入全局 | `__DSH_GITHUB_PUBLISHER__` | 保留 | client.js 从注入脚本读取，改了页面拿不到 token |
+| CSRF 头 | `x-dsh-github-publisher-token` | 保留 | 两半共同约定，改了请求全部 403 |
+| 路由前缀 | `/dsh-github-publisher/api` | 保留 | 页面按此前缀调用，改了接口全断 |
+| 数据目录 | `$DSH_HOME/github-publisher` | 保留 | **用户的 token 和历史在这里**，改了等于清空配置 |
+| 环境变量 | `DSH_GITHUB_PUBLISHER_DIR/_CWD/_GIT_HTTP_VERSION` | 保留 | 测试隔离与高级用法依赖 |
+| 面板行 id | `PANEL_ID = 'github-publisher'` | 保留 | 槽位 key，改了侧栏点进去空白 |
+
+判断依据只有一条：**这个标识符有没有已经部署的产物在读它。**
+有 → 保留；没有（只在源码内部流转）→ 跟随产品名。
+
+### 14-3 工具名的推导规则
+
+新工具名不是随手起的，而是 `package.json` 的 name 把连字符换成下划线：
+`multi-platform-releaser` → `multi_platform_releaser`。
+已加断言锁死这条规则，同时断言 id **不得包含任何单一 forge 的名字**（github/gitee/codeberg）。
+
+### 14-4 测试
+
+615 → **616**（新增 1 条：工具 id 不命名单一 forge，且必须与包名派生一致）。
+
+三处断言同步更新：
+
+| 位置 | 改动 |
+|---|---|
+| `verify-static` 的 `agent tool name` | 期望值改为新名 |
+| `verify-static` 的 `CONTRACT.md pins the fixed identifiers` | 列表里工具名换新，内部标识符保留旧拼写 |
+| `host-sim` 的注册断言 | 断言名与校验值都改；真实 `apply()` 跑通 |
+
+```
+123 + 99 + 56 + 7 + 9 + 7 + 6 + 30 + 18 + 29 + 35 + 239 = 616
+```
+
+`npm run check` + `npm test` exit 0。`guard_check_bundle`：ERROR 0 / WARN 0 / PASS 18。
+
+### 14-5 备份
+
+`G:\AI PGRM\plugn\backup\publisher-toolrename-20261108-150537`（改名前三处一致）。

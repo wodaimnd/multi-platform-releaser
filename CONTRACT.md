@@ -22,7 +22,7 @@
 7. 「版本同步」页：对比本地版本与每个平台的远端版本，标出落后/已同步/未发布，
    支持一键 bump `package.json` 版本、只对落后的平台补发；
 8. 设置、草稿、历史持久化到 `$DSH_HOME/github-publisher/`（沿用历史目录，旧 token/账号缓存继续可用）；
-9. 同一套操作同时通过 Host HTTP API（供 UI）与 Agent 工具 `github_publisher`（供模型）暴露。
+9. 同一套操作同时通过 Host HTTP API（供 UI）与 Agent 工具 `multi_platform_releaser`（供模型）暴露。
 
 ## 1. 固定标识符
 
@@ -38,8 +38,8 @@
 | 页面注入的全局变量 | `window.__DSH_GITHUB_PUBLISHER__ = { token, version, apiPrefix }` |
 | 数据目录（Host） | `process.env.DSH_GITHUB_PUBLISHER_DIR`（测试隔离用）或 `$DSH_HOME/github-publisher` 或 `~/.dsh/github-publisher` |
 | 数据文件 | `config.json`(0600) / `history.json` / `drafts.json` |
-| Agent 工具名 | `github_publisher` |
-| 版本 | `0.3.4` |
+| Agent 工具名 | `multi_platform_releaser` |
+| 版本 | `0.4.0` |
 
 ## 2. 安全与鉴权（Host）
 
@@ -799,7 +799,7 @@ export class Publisher {
 ## 7. index.js（Lead）
 - `export const inject = ['webServer']`；`export function apply(ctx)`。
 - 依次注册：清理 → tapIndex 注入 → `webServer.register({kind:'prefix', path:'/dsh-github-publisher'})` →
-  `ctx.get('tools')` 存在时注册 `github_publisher` 工具（若 `tools` 不在 inject，用 `ctx.inject(['tools'],…)`
+  `ctx.get('tools')` 存在时注册 `multi_platform_releaser` 工具（若 `tools` 不在 inject，用 `ctx.inject(['tools'],…)`
   或 `ctx.get` + effect；工具注册失败不得影响 HTTP）。
 - 工具参数（JSON Schema）：
 ```jsonc

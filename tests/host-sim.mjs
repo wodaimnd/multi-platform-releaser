@@ -187,7 +187,7 @@ host.apply(ctx)
 
 check('Host apply() registers one prefix route', registrations.routes.length === 1 && registrations.routes[0].path === '/dsh-github-publisher')
 check('Host apply() registers an index tap', registrations.taps.length === 1)
-check('Host apply() registers the github_publisher tool', registrations.tools.length === 1 && registrations.tools[0].name === 'github_publisher')
+check('Host apply() registers the multi_platform_releaser tool', registrations.tools.length === 1 && registrations.tools[0].name === 'multi_platform_releaser')
 
 const html = registrations.taps[0]('<html><head><title>x</title></head><body></body></html>')
 const tokenMatch = /window\.__DSH_GITHUB_PUBLISHER__=(\{.*?\});<\/script>/.exec(html)

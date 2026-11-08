@@ -1,11 +1,11 @@
 /**
- * dsh-github-publisher — Host half.
+ * multi-platform-releaser — Host half.
  *
  * One-click GitHub publishing for local DSH plugins. This file is the carrier
  * layer only:
  *   · it registers the token-gated `/dsh-github-publisher/api/*` HTTP surface
  *     the Web page calls (same-origin, CSRF token injected into index.html);
- *   · it registers the `github_publisher` agent tool, which calls the exact same
+ *   · it registers the `multi_platform_releaser` agent tool, which calls the exact same
  *     Publisher service methods as the UI;
  *   · it owns the page token injection and route/teardown wiring.
  *
@@ -27,7 +27,7 @@ import { tokenHint } from './lib/store.mjs'
 import { ConfigStore, resolveDataDir } from './lib/store.mjs'
 import { inspectVersionDrift } from './lib/version-sync.mjs'
 
-export const name = 'dsh-github-publisher'
+export const name = 'multi-platform-releaser'
 export const inject = ['webServer']
 
 const ROUTE_PREFIX = '/dsh-github-publisher'
@@ -35,7 +35,7 @@ const API_PREFIX = `${ROUTE_PREFIX}/api`
 const TOKEN_HEADER = 'x-dsh-github-publisher-token'
 const TOKEN_GLOBAL = '__DSH_GITHUB_PUBLISHER__'
 const BODY_MAX_BYTES = 2 * 1024 * 1024
-const TOOL_NAME = 'github_publisher'
+const TOOL_NAME = 'multi_platform_releaser'
 const TOOL_DEFAULT_WAIT_MS = 120_000
 const TOOL_MAX_WAIT_MS = 300_000
 const AI_UNAVAILABLE_MESSAGE = '没有可用的 DeepSeek 模型：请先在 DSH「设置 → 模型」里配置提供商/模型，再重试 AI 补全。'
@@ -650,8 +650,8 @@ export function apply(ctx) {
     return {
       name: TOOL_NAME,
       description: [
-        'Publish a local DSH plugin to the user\'s GitHub account end-to-end: discover local plugin directories, preflight the release, fill in repository metadata, generate README/LICENSE/.gitignore and complete package.json, create or reuse the repository, commit, push, tag and create a GitHub Release.',
-        'Operations are the exact same ones the GitHub Publisher page (left sidebar) uses.',
+        'Publish a local DSH plugin to the user\'s repositories end-to-end: discover local plugin directories, preflight the release, fill in repository metadata, generate README/LICENSE/.gitignore and complete package.json, create or reuse the repository, commit, push, tag and create a GitHub Release.',
+        'Targets any of GitHub / Gitee / Codeberg (multi-select — one commit is pushed to every ticked remote, each with its own repo and release) and can additionally publish to the npm registry. Operations are the exact same ones the 「多代码平台发布插件」 page (left sidebar) uses.',
         `Actions: ${actions.join(', ')}. Use "state" first to see the account and local plugins. Use "publish" with {path, form} to publish; it waits for the job and returns the result. Use "suggest" to draft description/topics/release notes with the configured DeepSeek model.`,
       ].join(' '),
       parameters: {

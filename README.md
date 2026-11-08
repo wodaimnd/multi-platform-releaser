@@ -8,7 +8,7 @@
 
 手工发布一个 DSH 插件，通常要重复十几步：新建仓库、补 README 徽章和安装说明、选许可证、写 `.gitignore`、把 `repository`/`homepage`/`keywords` 填进 package.json、`git init`、配置身份、commit、切分支、建 remote、push、打 tag、建 Release、再回来补 topics；要上 npm 还得另开一套流程：确认版本号没被占用、`npm publish`、回查 registry、再看 README 在 npm 页面是不是正常。发新版时更麻烦——版本号要 bump，GitHub 和 npm 两边都得重来一遍，很容易一边发了一边忘。
 
-发布台把这些收进一个页面：发布要素只填一次（各平台之间本来就大差不大），平台专属的东西（npm 的 access/dist-tag/OTP、GitHub 的可见性/分支）折叠在各自那一行；点「发布到 GitHub + npm registry」就按顺序执行并实时显示进度。同一套操作也暴露成 Agent 工具 `github_publisher`，你可以直接让 DSH 里的 Agent 帮你发。
+发布台把这些收进一个页面：发布要素只填一次（各平台之间本来就大差不大），平台专属的东西（npm 的 access/dist-tag/OTP、GitHub 的可见性/分支）折叠在各自那一行；点「发布到 GitHub + npm registry」就按顺序执行并实时显示进度。同一套操作也暴露成 Agent 工具 `multi_platform_releaser`，你可以直接让 DSH 里的 Agent 帮你发。
 
 ## 功能
 
@@ -31,7 +31,7 @@
 - **数据持久化**：设置、平台凭据、每个插件的表单草稿、最近 50 条发布记录保存在 `~/.dsh/github-publisher/`（沿用历史目录，旧 token/账号缓存继续可用）；token 只存本机 `config.json`（0600），响应与日志只回掩码。
 - **不需要手动填 GitHub token 的路径**：若本机已有可用凭证（`GITHUB_TOKEN`/`GH_TOKEN`、`gh auth token`、`git credential` 里保存的 github.com 凭证），发布时自动检测并直接使用；npm 也支持用环境变量 `NPM_TOKEN` 兜底（不落盘）。
 - **安全发布嵌套插件**：如果插件目录位于某个父 git 仓库内（很常见：monorepo/工作区），发布台会在插件目录里建立**独立** git 仓库，绝不会把父仓库的提交/远端牵连进来；预检会明确提示父仓库会看到这些文件改动。
-- **Agent 工具 `github_publisher`**：`state / scan / preflight / publish / job / cancel / settings / token / history / suggest`，与 UI 共用同一个 `Publisher` 服务，行为一致；`form.platforms` 决定本次发到哪些平台。
+- **Agent 工具 `multi_platform_releaser`**：`state / scan / preflight / publish / job / cancel / settings / token / history / suggest`，与 UI 共用同一个 `Publisher` 服务，行为一致；`form.platforms` 决定本次发到哪些平台。
 - **对外 HTTP API**：`/dsh-github-publisher/api/*`（同源 + CSRF token 门禁），除原有的 state/scan/settings/token/preflight/publish/job/cancel/draft/history/ai 之外，新增 `platforms`、`platforms/verify`、`platforms/npm-token`、`version/bump`、`sync/plan`；完整接口见下文与 `CONTRACT.md`。
 
 ## 安装
@@ -136,7 +136,7 @@ plugin_manager action=install_bundle target=/absolute/path/to/dsh-github-publish
 |---|---|---|
 | 多代码平台发布插件 | DSH 左侧栏（order 50） | 发布页（上手向导 + 插件列表 + 平台勾选 + 表单 + 预检 + 进度 + 历史）｜平台配置页｜版本同步页 |
 | 设置 · 帮助与链接 | 发布台右上角「设置」→ 第 5 个页签 | 所有凭据申请入口、当前生效的接口地址、npm registry 说明、「复制诊断信息」 |
-| `github_publisher` 工具 | Agent 工具面板 | 让 Agent 扫描/预检/发布/查询任务，例：`帮我用 github_publisher 把 dsh-xxx 发布到 GitHub 和 npm` |
+| `multi_platform_releaser` 工具 | Agent 工具面板 | 让 Agent 扫描/预检/发布/查询任务，例：`帮我用 multi_platform_releaser 把 dsh-xxx 发布到 GitHub 和 npm` |
 | HTTP API | `/dsh-github-publisher/api/*` | 页面使用的同源接口，也可被本机脚本调用（需页面注入的 token） |
 
 ## HTTP API
