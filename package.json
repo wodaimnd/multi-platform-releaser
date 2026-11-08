@@ -1,6 +1,6 @@
 {
   "name": "multi-platform-releaser",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "private": true,
   "type": "module",
   "description": "Multi-forge publishing for local DSH plugins: tick any of GitHub / Gitee / Codeberg plus npm, fill the metadata once, then create every repository, push the same commit to each remote, tag, Release and npm publish from a single button. · 多代码平台发布插件：一键把本地 DSH 插件同时发布到 GitHub / Gitee / Codeberg / npm——同一个 commit 推到每个远端，各自建仓、各自发 Release；每个平台用自己账号的令牌，某个平台失败不影响其他平台。",
