@@ -39,7 +39,7 @@ window.__ModuleLoader__.load({
     /** Row order among the shell's global panel rows (Plugins 0, Schedule 10). */
     const PANEL_ORDER = 50
 
-    const CLIENT_VERSION = '0.4.4'
+    const CLIENT_VERSION = '0.4.5'
     const TOKEN_HEADER = 'x-dsh-github-publisher-token'
     const POLL_MS = 650
     const DRAFT_DEBOUNCE_MS = 400
@@ -57,6 +57,9 @@ window.__ModuleLoader__.load({
     const STORAGE_ACTIVE_TAB = 'dsh-github-publisher.page'
     const STORAGE_GUIDE = 'dsh-github-publisher.guide'
     const STORAGE_SEARCH = 'dsh-github-publisher.search'
+    const STORAGE_SORT = 'dsh-github-publisher.sort'
+    const STORAGE_FILTER = 'dsh-github-publisher.filter'
+    const STORAGE_HISTORY_OPEN = 'dsh-github-publisher.historyOpen'
 
     const MONO_FONT = 'ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace'
 
@@ -146,6 +149,16 @@ window.__ModuleLoader__.load({
     const VISIBILITY_IDS = ['public', 'private']
     const README_MODE_IDS = ['auto', 'append', 'regenerate']
     const REPO_STRATEGY_IDS = ['reuse', 'error']
+    /**
+     * Sort orders for the plugin list.
+     *
+     * `scan` is whatever the scanner returned (the historical default, kept so nothing
+     * changes for someone who never touches the control).
+     */
+    const SORT_IDS = ['scan', 'recent', 'name', 'attention']
+    /** Which rows the list shows. `all` is the default. */
+    const FILTER_IDS = ['all', 'unpublished', 'published', 'changes']
+
     const PLATFORM_IDS = ['github', 'gitee', 'codeberg', 'npm']
     const NPM_ACCESS_IDS = ['public', 'restricted']
 
@@ -352,6 +365,22 @@ window.__ModuleLoader__.load({
       'left.filtered': '{n} / {total} 个匹配',
       'left.noMatch': '没有匹配的插件',
       'left.recent': '最近发布',
+      'left.groupPublished': '已发布 · {n}',
+      'left.groupFresh': '未发布 · {n}',
+      'left.duplicateName': '同名不同路径，注意别发错目录',
+      'badge.duplicate': '同名·路径不同',
+      'left.historyToggle': '最近发布（{n}）',
+      'left.sortLabel': '排序',
+      'left.filterLabel': '筛选',
+      'left.sort.scan': '扫描顺序',
+      'left.sort.recent': '最近发布',
+      'left.sort.name': '名称',
+      'left.sort.attention': '待处理的优先',
+      'left.filter.all': '全部',
+      'left.filter.unpublished': '未发布',
+      'left.filter.published': '已发布',
+      'left.filter.changes': '有新改动',
+      'left.resetControls': '清除搜索与筛选',
       'left.recentEmpty': '还没有发布记录',
       'left.openHistory': '打开仓库页面',
 
@@ -441,6 +470,8 @@ window.__ModuleLoader__.load({
       'plugin.license': 'License {license}',
       'plugin.noReadme': '没有 README',
       'plugin.noAuthor': '未声明作者',
+      'plugin.otherOwner': '他人插件 · @{owner}',
+      'badge.foreign': '他人插件',
       'plugin.authorLabel': '作者',
       'plugin.authorAria': '插件作者：{author}',
       'plugin.ownMatch': '与账号一致',
@@ -568,6 +599,8 @@ window.__ModuleLoader__.load({
       'preflight.ownershipRepo': '目标仓库归属',
       'preflight.ownershipNpmScope': 'npm 作用域',
       'preflight.ownershipConfirm': '确认这是我的插件（作者字段写的是原作者 / fork 自他人）',
+      'preflight.ownershipConfirmForeignTitle': '确认这是你有权发布的插件',
+      'preflight.ownershipConfirmForeignHint': '这个插件属于 {owner}，不是你（{login}）。发布会在你的账号下新建仓库、署上你的名字。只有确认这是 fork 后已大改、或你确有发布权，才勾选。',
       'preflight.ownershipConfirmHint': '勾选后继续正常发布，并把这次确认记进发布记录。不勾选也不会拦住发布。',
       'preflight.ownershipRecallHint': '这个勾选会按插件记住（存在该插件的草稿里）；一旦 package.json 的 author 被改成另一个人，记住的确认会自动失效，需要重新勾选。',
       'preflight.ownershipConfirmedRemembered': '（按插件记住的确认）',
@@ -933,6 +966,22 @@ window.__ModuleLoader__.load({
       'left.filtered': '{n} / {total} matching',
       'left.noMatch': 'No matching plugins',
       'left.recent': 'Recent publishes',
+      'left.groupPublished': 'Published · {n}',
+      'left.groupFresh': 'Not published · {n}',
+      'left.duplicateName': 'Same name, different path — check before publishing',
+      'badge.duplicate': 'Same name·diff path',
+      'left.historyToggle': 'Recent ({n})',
+      'left.sortLabel': 'Sort',
+      'left.filterLabel': 'Filter',
+      'left.sort.scan': 'Scan order',
+      'left.sort.recent': 'Recently published',
+      'left.sort.name': 'Name',
+      'left.sort.attention': 'Needs attention',
+      'left.filter.all': 'All',
+      'left.filter.unpublished': 'Not published',
+      'left.filter.published': 'Published',
+      'left.filter.changes': 'Has changes',
+      'left.resetControls': 'Clear search and filters',
       'left.recentEmpty': 'No publish history yet',
       'left.openHistory': 'Open repository page',
 
@@ -1022,6 +1071,8 @@ window.__ModuleLoader__.load({
       'plugin.license': 'License {license}',
       'plugin.noReadme': 'No README',
       'plugin.noAuthor': 'No author declared',
+      'plugin.otherOwner': 'Someone else\'s plugin · @{owner}',
+      'badge.foreign': 'Not yours',
       'plugin.authorLabel': 'Author',
       'plugin.authorAria': 'Plugin author: {author}',
       'plugin.ownMatch': 'Matches your account',
@@ -1149,6 +1200,8 @@ window.__ModuleLoader__.load({
       'preflight.ownershipRepo': 'Target repo owner',
       'preflight.ownershipNpmScope': 'npm scope',
       'preflight.ownershipConfirm': 'I confirm this is my plugin (the author field names the original project or a fork)',
+      'preflight.ownershipConfirmForeignTitle': 'Confirm you have the right to publish this',
+      'preflight.ownershipConfirmForeignHint': 'This plugin belongs to {owner}, not you ({login}). Publishing creates a repository under your account and credits your name. Only tick this if you have forked and substantially changed it, or otherwise hold the rights.',
       'preflight.ownershipConfirmHint': 'Ticking this publishes normally and records the confirmation. Leaving it unticked does not block publishing.',
       'preflight.ownershipRecallHint': 'This tick is remembered per plugin (kept in that plugin\'s draft). If package.json later names a different author, the remembered confirmation expires and has to be given again.',
       'preflight.ownershipConfirmedRemembered': '(confirmation remembered for this plugin)',
@@ -1543,6 +1596,52 @@ window.__ModuleLoader__.load({
       if (value === '') return ''
       const parts = value.split(/[\\/]/)
       return parts[parts.length - 1] || value
+    }
+
+    /**
+     * Shorten an absolute path from the middle, keeping the drive/root and the tail.
+     *
+     * `G:\AI PGRM\DSH\plugins\apk-lab` fits and is returned untouched. A long one such
+     * as `G:\AI PGRM\DSH\plugins\dsh-forge-20261108-154713` becomes
+     * `G:\AI P…\dsh-forge-20261108-154713`, so both "where on disk" and "which plugin"
+     * survive.
+     *
+     * Path separators are preserved on both sides of the ellipsis — cutting through a
+     * component would produce a path that looks valid but is not.
+     */
+    function middleEllipsis(value, budget) {
+      const text = toText(value)
+      const limit = typeof budget === 'number' && budget > 8 ? budget : 34
+      if (text.length <= limit) return text
+      const tailLen = Math.max(8, Math.floor(limit * 0.62))
+      const headLen = Math.max(4, limit - tailLen - 1)
+      let head = text.slice(0, headLen)
+      let tail = text.slice(text.length - tailLen)
+      // Do not end a fragment mid-segment: drop back to the last separator.
+      const headCut = Math.max(head.lastIndexOf('/'), head.lastIndexOf('\\'))
+      if (headCut > 0 && headCut < head.length - 1) head = head.slice(0, headCut)
+      /*
+       * Start the tail after a separator so it reads as a complete component, never
+       * mid-word: `…\dsh-forge-20261108-154713` rather than `…forge-2026…`.
+       * When the window holds no separator at all, keep the whole window — there is
+       * no boundary to snap to, and inventing one would cut more than necessary.
+       */
+      const tailCut = tail.search(/[\\/]/)
+      if (tailCut > 0 && tailCut < tail.length - 2) {
+        tail = tail.slice(tailCut)
+      } else if (tailCut < 0) {
+        /*
+         * The window is one long component (e.g. a timestamped directory). Cutting it
+         * mid-word makes the path look damaged, so keep the whole component and give
+         * the head whatever budget is left.
+         */
+        const room = Math.max(4, limit - tail.length - 1)
+        let headOnly = text.slice(0, room)
+        const cut = Math.max(headOnly.lastIndexOf('/'), headOnly.lastIndexOf('\\'))
+        if (cut > 0 && cut < headOnly.length - 1) headOnly = headOnly.slice(0, cut)
+        return headOnly + '…' + tail
+      }
+      return head + '…' + tail
     }
 
     function shortSha(sha) {
@@ -2148,6 +2247,85 @@ window.__ModuleLoader__.load({
       return null
     }
 
+    /** Publish count / recency helpers shared by the sort and the filter. */
+    /**
+     * Does this plugin belong to a different account than the connected one?
+     *
+     * The author field is preferred; when it is absent the repository owner decides.
+     * That is the case the list was getting wrong: a plugin installed from somebody
+     * else's repo has no author name, only an owner.
+     */
+    function belongsToOther(plugin, login) {
+      const me = toText(login).toLowerCase()
+      if (me === '') return false
+      const owner = toText(plugin && plugin.repositoryOwner).toLowerCase()
+      if (owner !== '' && owner !== me) return true
+      return false
+    }
+
+    function hasPublished(plugin) {
+      return Boolean(plugin && plugin.published)
+    }
+
+    function hasChanges(plugin) {
+      const status = plugin && plugin.gitStatus
+      return Boolean(status && (status.dirty === true || status.modified > 0 || status.untracked > 0 || status.staged > 0))
+    }
+
+    /**
+     * Which rows the list shows.
+     *
+     * `all` returns the input untouched (same array identity), so the default path
+     * costs nothing and existing behaviour is preserved exactly.
+     */
+    function applyPluginFilter(plugins, filter) {
+      const list = Array.isArray(plugins) ? plugins : []
+      const id = FILTER_IDS.indexOf(toText(filter)) >= 0 ? toText(filter) : 'all'
+      if (id === 'unpublished') return list.filter(function notYet(p) { return !hasPublished(p) })
+      if (id === 'published') return list.filter(function isPublished(p) { return hasPublished(p) })
+      if (id === 'changes') return list.filter(function changed(p) { return hasChanges(p) })
+      return list
+    }
+
+    /**
+     * Order the rows.
+     *
+     * `scan` keeps the scanner's own order untouched. The other three all end with
+     * a name comparison: without a tiebreaker, rows that compare equal swap on every
+     * render, which reads as the list jumping around while the user scrolls.
+     */
+    function sortPlugins(plugins, sort) {
+      const list = Array.isArray(plugins) ? plugins.slice() : []
+      const id = SORT_IDS.indexOf(toText(sort)) >= 0 ? toText(sort) : 'scan'
+      const byName = function byName(a, b) {
+        const an = toText(a && (a.displayName || a.name)).toLowerCase()
+        const bn = toText(b && (b.displayName || b.name)).toLowerCase()
+        return an < bn ? -1 : an > bn ? 1 : 0
+      }
+      if (id === 'recent') {
+        return list.sort(function newestFirst(a, b) {
+          const at = Number((a && a.published && a.published.lastPublishedAt) || 0)
+          const bt = Number((b && b.published && b.published.lastPublishedAt) || 0)
+          if (bt !== at) return bt - at
+          return byName(a, b)
+        })
+      }
+      if (id === 'name') return list.sort(byName)
+      if (id === 'attention') {
+        /*
+         * "Needs attention" puts the work in front: unpublished first, then those with
+         * uncommitted changes, then everything else — each block name-sorted.
+         */
+        return list.sort(function attentionFirst(a, b) {
+          const aRank = hasPublished(a) ? (hasChanges(a) ? 1 : 2) : 0
+          const bRank = hasPublished(b) ? (hasChanges(b) ? 1 : 2) : 0
+          if (aRank !== bRank) return aRank - bRank
+          return byName(a, b)
+        })
+      }
+      return list
+    }
+
     function filterPlugins(plugins, query) {
       const list = Array.isArray(plugins) ? plugins : []
       const needle = toText(query).trim().toLowerCase()
@@ -2577,6 +2755,8 @@ window.__ModuleLoader__.load({
         selectedPath: null,
         form: null,
         search: '',
+        sort: readStorage(STORAGE_SORT) || 'scan',
+        filter: readStorage(STORAGE_FILTER) || 'all',
         formDirty: false,
         formErrors: {},
         preflight: null,
@@ -2870,6 +3050,23 @@ window.__ModuleLoader__.load({
         const text = toText(value)
         writeStorage(STORAGE_SEARCH, text)
         setState({ search: text })
+      }
+
+      /**
+       * Set the sort order. Validated against the known ids so a hand-edited
+       * localStorage value cannot put the list into an unknown state.
+       */
+      function setSort(value) {
+        const id = SORT_IDS.indexOf(toText(value)) >= 0 ? toText(value) : 'scan'
+        writeStorage(STORAGE_SORT, id)
+        setState({ sort: id })
+      }
+
+      /** Set the row filter, same validation rule as setSort. */
+      function setFilter(value) {
+        const id = FILTER_IDS.indexOf(toText(value)) >= 0 ? toText(value) : 'all'
+        writeStorage(STORAGE_FILTER, id)
+        setState({ filter: id })
       }
 
       /** Switch the page tab (publish / platforms / sync) and remember it. */
@@ -3671,6 +3868,8 @@ window.__ModuleLoader__.load({
         selectPlugin: selectPlugin,
         getSelectedPlugin: getSelectedPlugin,
         setSearch: setSearch,
+        setSort: setSort,
+        setFilter: setFilter,
         updateForm: updateForm,
         scheduleDraft: scheduleDraft,
         flushDraft: flushDraft,
@@ -4498,10 +4697,24 @@ window.__ModuleLoader__.load({
       const p = props || {}
       const plugin = p.plugin || {}
       const badges = []
+      /*
+       * Somebody else's plugin, judged from the repository owner when the manifest
+       * carries no author. This is the case a locally-installed plugin falls into:
+       * an online install failed and the tarball was unpacked by hand.
+       */
+      const otherOwner = belongsToOther(plugin, p.login) && plugin.authorName === '' && plugin.authorEmail === ''
+        ? toText(plugin.repositoryOwner)
+        : ''
       if (plugin.published) badges.push({ key: 'published', tone: 'success', text: t('badge.published') })
       else badges.push({ key: 'unpublished', tone: 'muted', text: t('badge.unpublished') })
       if (plugin.hasReadme !== true) badges.push({ key: 'readme', tone: 'warn', text: t('badge.noReadme') })
       if (p.connected !== true) badges.push({ key: 'token', tone: 'danger', text: t('badge.noToken') })
+      // A name shared by two directories must say so on its own row — as a sibling
+      // below the row it looked attached to the next project instead.
+      if (p.duplicateName === true) badges.push({ key: 'dup', tone: 'warn', text: t('badge.duplicate') })
+      // Somebody else's plugin: publishing it under your own name is the mistake this
+      // prevents, so it gets a badge rather than a small grey line.
+      if (otherOwner !== '') badges.push({ key: 'foreign', tone: 'warn', text: t('badge.foreign') })
       return h('button', {
         type: 'button',
         role: 'listitem',
@@ -4518,12 +4731,25 @@ window.__ModuleLoader__.load({
           // Whose plugin this is, one line, above the path — so a list of similar
           // names cannot be mistaken for one another.
           h('span', {
-            className: 'dgp-plugin-author' + (plugin.authorName !== '' || plugin.authorEmail !== '' ? '' : ' dgp-plugin-author-none'),
-            title: plugin.author !== '' ? plugin.author : t('plugin.noAuthor'),
-          }, h(Icon, { name: 'user', size: 10 }), plugin.authorName !== '' ? plugin.authorName : (plugin.authorEmail !== '' ? plugin.authorEmail : t('plugin.noAuthor'))),
+            className: 'dgp-plugin-author'
+              + (plugin.authorName !== '' || plugin.authorEmail !== '' || otherOwner !== ''
+                ? '' : ' dgp-plugin-author-none')
+              + (otherOwner !== '' ? ' dgp-plugin-author-foreign' : ''),
+            title: plugin.author !== '' ? plugin.author : (otherOwner !== '' ? '@' + plugin.repositoryOwner : t('plugin.noAuthor')),
+          },
+            h(Icon, { name: 'user', size: 10 }),
+            plugin.authorName !== ''
+              ? plugin.authorName
+              : plugin.authorEmail !== ''
+                ? plugin.authorEmail
+                // No author field but a foreign owner: say whose it is rather than
+                // claiming nobody wrote it.
+                : otherOwner !== ''
+                  ? t('plugin.otherOwner', { owner: plugin.repositoryOwner })
+                  : t('plugin.noAuthor')),
           h('span', { className: 'dgp-plugin-meta' },
             h('span', { className: 'dgp-plugin-ver' }, plugin.version !== '' ? t('plugin.version', { version: plugin.version }) : ''),
-            h('span', { className: 'dgp-plugin-path' }, plugin.path))),
+            h('span', { className: 'dgp-plugin-path', title: plugin.path }, middleEllipsis(plugin.path, 34)))),
         h('span', { className: 'dgp-plugin-badges' }, badges.map(function renderBadge(badge) {
           return h(Badge, { key: badge.key, tone: badge.tone }, badge.text)
         })))
@@ -4532,27 +4758,98 @@ window.__ModuleLoader__.load({
     function HistoryList(props) {
       const p = props || {}
       const history = Array.isArray(p.history) ? p.history.slice(0, 8) : []
-      return h('div', { className: 'dgp-history' },
-        h('div', { className: 'dgp-history-head' },
+      /*
+       * Collapsed by default. This block competes for height with the plugin list
+       * inside a 320px column, and most sessions never read it. The header keeps the
+       * count so its existence stays obvious, and the choice is remembered.
+       */
+      const openState = React.useState(function initialOpen() {
+        return readStorage(STORAGE_HISTORY_OPEN) === '1'
+      })
+      const open = openState[0]
+      const setOpen = openState[1]
+      function toggle() {
+        const next = !open
+        setOpen(next)
+        writeStorage(STORAGE_HISTORY_OPEN, next ? '1' : '0')
+      }
+      const count = history.length
+      const rows = history.map(function renderEntry(entry, index) {
+        return h('a', {
+          key: entry.id !== '' ? entry.id : (entry.repoUrl || entry.name) + '@' + entry.at + '-' + index,
+          className: 'dgp-history-row',
+          href: entry.repoUrl || undefined,
+          target: '_blank',
+          rel: 'noreferrer',
+          title: entry.repoUrl !== '' ? t('left.openHistory') + ' — ' + entry.repoUrl : entry.name,
+        },
+          h('span', { className: 'dgp-history-dot', 'data-status': entry.status }),
+          h('span', { className: 'dgp-history-name' }, entry.repo !== '' ? entry.owner + '/' + entry.repo : entry.name),
+          entry.version !== '' ? h('span', { className: 'dgp-history-ver' }, t('plugin.version', { version: entry.version })) : null,
+          entry.dryRun ? h('span', { className: 'dgp-history-dry' }, t('option.dryRun')) : null,
+          h('span', { className: 'dgp-history-time' }, formatRelativeTime(entry.at)))
+      })
+      const body = count === 0
+        ? h('p', { className: 'dgp-history-empty' }, t('left.recentEmpty'))
+        : rows
+      return h('div', { className: 'dgp-history' + (open ? ' dgp-history-open' : '') },
+        h('button', {
+          type: 'button',
+          className: 'dgp-history-toggle',
+          onClick: toggle,
+          'aria-expanded': open ? 'true' : 'false',
+        },
+          h(Icon, { name: 'chevron', size: 12, className: open ? 'dgp-chevron-open' : '' }),
           h(Icon, { name: 'history', size: 12 }),
-          h('span', { className: 'dgp-history-title' }, t('left.recent'))),
-        history.length === 0
-          ? h('p', { className: 'dgp-history-empty' }, t('left.recentEmpty'))
-          : history.map(function renderEntry(entry, index) {
-              return h('a', {
-                key: entry.id !== '' ? entry.id : (entry.repoUrl || entry.name) + '@' + entry.at + '-' + index,
-                className: 'dgp-history-row',
-                href: entry.repoUrl || undefined,
-                target: '_blank',
-                rel: 'noreferrer',
-                title: entry.repoUrl !== '' ? t('left.openHistory') + ' — ' + entry.repoUrl : entry.name,
-              },
-                h('span', { className: 'dgp-history-dot', 'data-status': entry.status }),
-                h('span', { className: 'dgp-history-name' }, entry.repo !== '' ? entry.owner + '/' + entry.repo : entry.name),
-                entry.version !== '' ? h('span', { className: 'dgp-history-ver' }, t('plugin.version', { version: entry.version })) : null,
-                entry.dryRun ? h('span', { className: 'dgp-history-dry' }, t('option.dryRun')) : null,
-                h('span', { className: 'dgp-history-time' }, formatRelativeTime(entry.at)))
-            }))
+          h('span', { className: 'dgp-history-title' }, t('left.historyToggle', { n: String(count) }))),
+        open ? body : null)
+    }
+
+
+    /**
+     * Render the plugin list in two labelled sections with duplicate warnings.
+     *
+     * A flat run of 39 rows, where the same name can appear twice with different
+     * paths, makes the user guess which one they are choosing. Grouping by publish
+     * state answers the first question ("which of these still needs publishing?") and
+     * the duplicate marker answers the second ("why are there two of them?").
+     */
+    function renderPluginGroups(list, opts) {
+      const visible = Array.isArray(list) ? list : []
+      const toRender = []
+      const published = visible.filter(function isPublished(p) { return Boolean(p.published) })
+      const fresh = visible.filter(function isFresh(p) { return !p.published })
+
+      function namesSeen() {
+        const seen = Object.create(null)
+        for (const p of visible) seen[toText(p.name)] = (seen[toText(p.name)] || 0) + 1
+        return seen
+      }
+      const nameCounts = namesSeen()
+
+      function section(titleKey, items, extra) {
+        if (items.length === 0) return null
+        return h('div', { key: 'group-' + titleKey, className: 'dgp-group' },
+          h('div', { className: 'dgp-group-head' }, t(titleKey, { n: items.length })),
+          h('div', { className: 'dgp-plugin-list', role: 'list' }, items.map(function renderRow(plugin) {
+            return h(PluginRow, {
+              key: plugin.path,
+              plugin: plugin,
+              duplicateName: (nameCounts[toText(plugin.name)] || 0) > 1,
+              selected: plugin.path === opts.selectedPath,
+              connected: opts.connected === true,
+              login: opts.login || '',
+              disabled: opts.disabled,
+              onSelect: function select() { opts.onSelect(plugin.path) },
+            })
+          })))
+      }
+
+      const publishedSection = section('left.groupPublished', published)
+      const freshSection = section('left.groupFresh', fresh)
+      if (publishedSection) toRender.push(publishedSection)
+      if (freshSection) toRender.push(freshSection)
+      return h('div', { className: 'dgp-groups' }, toRender)
     }
 
     function LeftPane(props) {
@@ -4560,7 +4857,16 @@ window.__ModuleLoader__.load({
       const snapshot = p.snapshot || {}
       const store = p.store
       const plugins = Array.isArray(snapshot.plugins) ? snapshot.plugins : []
-      const filtered = filterPlugins(plugins, snapshot.search)
+      /*
+       * Three stages, in this order: the search phrase narrows the set, the filter
+       * decides which of those rows belong on screen, and the sort arranges them.
+       * Reversing the last two would make the "n / total" line count rows the user
+       * cannot see.
+       */
+      const searched = filterPlugins(plugins, snapshot.search)
+      const filtered = sortPlugins(applyPluginFilter(searched, snapshot.filter), snapshot.sort)
+      const sortId = SORT_IDS.indexOf(toText(snapshot.sort)) >= 0 ? toText(snapshot.sort) : 'scan'
+      const filterId = FILTER_IDS.indexOf(toText(snapshot.filter)) >= 0 ? toText(snapshot.filter) : 'all'
       const account = snapshot.account || normalizeAccount(null)
       const publishing = snapshot.publishing === true
       const scanWarnings = Array.isArray(snapshot.scanWarnings) ? snapshot.scanWarnings : []
@@ -4575,41 +4881,75 @@ window.__ModuleLoader__.load({
             'aria-label': t('left.searchPlaceholder'),
             onChange: function onSearch(event) { store.setSearch(event && event.target ? event.target.value : '') },
           })),
+        /*
+         * Two compact selects instead of a toolbar: the column is 320px, and every
+         * row of chrome costs one plugin row of height. Both are real <select> elements
+         * so keyboard and screen-reader users get native behaviour for free.
+         */
+        h('div', { className: 'dgp-left-controls' },
+          h('label', { className: 'dgp-control' },
+            h('span', { className: 'dgp-control-label' }, t('left.sortLabel')),
+            h('select', {
+              className: 'dgp-control-select',
+              value: sortId,
+              onChange: function onSort(event) { store.setSort(event && event.target ? event.target.value : 'scan') },
+            }, SORT_IDS.map(function renderSort(id) {
+              return h('option', { key: id, value: id }, t('left.sort.' + id))
+            }))),
+          h('label', { className: 'dgp-control' },
+            h('span', { className: 'dgp-control-label' }, t('left.filterLabel')),
+            h('select', {
+              className: 'dgp-control-select',
+              value: filterId,
+              onChange: function onFilter(event) { store.setFilter(event && event.target ? event.target.value : 'all') },
+            }, FILTER_IDS.map(function renderFilter(id) {
+              return h('option', { key: id, value: id }, t('left.filter.' + id))
+            }))),
+          (snapshot.search || filterId !== 'all' || sortId !== 'scan')
+            ? h('button', {
+                type: 'button',
+                className: 'dgp-control-reset',
+                title: t('left.resetControls'),
+                'aria-label': t('left.resetControls'),
+                onClick: function reset() { store.setSearch(''); store.setFilter('all'); store.setSort('scan') },
+              }, h(Icon, { name: 'close', size: 11 }))
+            : null),
         h('div', { className: 'dgp-left-meta' },
           h('span', { className: 'dgp-left-count' }, t('left.count', { n: plugins.length })),
           snapshot.search ? h('span', { className: 'dgp-left-count' }, t('left.filtered', { n: filtered.length, total: plugins.length })) : null),
-        plugins.length === 0
-          ? h('div', { className: 'dgp-left-empty' },
-              h(EmptyState, {
-                icon: 'folder',
-                title: t('left.emptyTitle'),
-                body: t('left.emptyBody'),
-                action: h(Btn, {
-                  variant: 'primary',
-                  icon: 'refresh',
-                  busy: snapshot.scanBusy === true,
-                  disabled: snapshot.scanBusy === true,
-                  onClick: function scan() { store.rescan() },
-                }, t('left.scan')),
-              }))
-          : filtered.length === 0
-            ? h('p', { className: 'dgp-left-nomatch' }, t('left.noMatch'))
-            : h('div', { className: 'dgp-plugin-list', role: 'list' }, filtered.map(function renderRow(plugin) {
-                return h(PluginRow, {
-                  key: plugin.path,
-                  plugin: plugin,
-                  selected: plugin.path === snapshot.selectedPath,
+        /* One scroll container for the whole column: the list and the history flow
+         * inside it instead of each owning a scrollbar. */
+        h('div', { className: 'dgp-left-scroll' },
+          plugins.length === 0
+            ? h('div', { className: 'dgp-left-empty' },
+                h(EmptyState, {
+                  icon: 'folder',
+                  title: t('left.emptyTitle'),
+                  body: t('left.emptyBody'),
+                  action: h(Btn, {
+                    variant: 'primary',
+                    icon: 'refresh',
+                    busy: snapshot.scanBusy === true,
+                    disabled: snapshot.scanBusy === true,
+                    onClick: function scan() { store.rescan() },
+                  }, t('left.scan')),
+                }))
+            : filtered.length === 0
+              ? h('p', { className: 'dgp-left-nomatch' }, t('left.noMatch'))
+              : renderPluginGroups(filtered, {
+                  selectedPath: snapshot.selectedPath,
                   connected: account.connected === true,
+                  login: account.login || '',
                   disabled: publishing,
-                  onSelect: function select() { store.selectPlugin(plugin.path) },
-                })
-              })),
-        scanWarnings.length > 0
-          ? h('div', { className: 'dgp-scan-warn' }, scanWarnings.slice(0, 3).map(function renderWarning(warning, index) {
-              return h('p', { key: String(index), className: 'dgp-scan-warn-line' }, warning)
-            }))
-          : null,
-        h(HistoryList, { history: snapshot.history }))
+                  onSelect: function select(p) { store.selectPlugin(p) },
+                }),
+          scanWarnings.length > 0
+            ? h('div', { className: 'dgp-scan-warn' }, scanWarnings.slice(0, 3).map(function renderWarning(warning, index) {
+                return h('p', { key: String(index), className: 'dgp-scan-warn-line' }, warning)
+              }))
+            : null,
+          h(HistoryList, { history: snapshot.history }))
+      )
     }
     // ══════════════════════════════════════════════════════════════════════
     // Right column — selected plugin, token banner, forms, preview, preflight
@@ -5451,6 +5791,7 @@ window.__ModuleLoader__.load({
                     // checkbox never blocks a publish; it records that a human
                     // looked at this and said "yes, mine to publish".
                     ownership.confirmed !== true && (ownership.status === 'fork' || ownership.status === 'foreign')
+                      // Both statuses block the publish now, so both must offer the way out.
                       ? h('label', {
                           className: 'dgp-owner-confirm',
                           id: 'dgp-owner-confirm',
@@ -5471,8 +5812,17 @@ window.__ModuleLoader__.load({
                               })                            },
                           }),
                           h('span', { className: 'dgp-owner-confirm-text' },
-                            h('span', { className: 'dgp-owner-confirm-title' }, t('preflight.ownershipConfirm')),
-                            h('span', { className: 'dgp-owner-confirm-hint' }, t('preflight.ownershipConfirmHint')),
+                            h('span', { className: 'dgp-owner-confirm-title' },
+                              ownership.status === 'foreign'
+                                ? t('preflight.ownershipConfirmForeignTitle')
+                                : t('preflight.ownershipConfirm')),
+                            h('span', { className: 'dgp-owner-confirm-hint' },
+                              ownership.status === 'foreign'
+                                ? t('preflight.ownershipConfirmForeignHint', {
+                                    owner: ownership.owner || ownership.author || '',
+                                    login: ownership.login || t('preflight.ownershipNoAccount'),
+                                  })
+                                : t('preflight.ownershipConfirmHint')),
                             h('span', { className: 'dgp-owner-confirm-hint' }, t('preflight.ownershipRecallHint'))))
                       : null,
                     ownership.confirmed === true
@@ -7057,7 +7407,7 @@ window.__ModuleLoader__.load({
       '.dgp-root{display:flex;flex-direction:column;height:100%;min-height:0;width:100%;box-sizing:border-box;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:1.5;container-type:inline-size;overflow:hidden;}',
       '.dgp-root *{box-sizing:border-box;}',
       '.dgp-root button{font-family:inherit;}',
-      '.dgp-header{display:flex;align-items:center;gap:8px;flex:none;padding:12px 20px;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-base);}',
+      '.dgp-header{display:flex;align-items:center;gap:8px;flex:none;padding:12px 20px;border-bottom:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-base);}',
       '.dgp-brand{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;flex:none;border-radius:9px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-brand-primary);}',
       '.dgp-head-text{min-width:0;}',
       '.dgp-title{margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
@@ -7101,40 +7451,62 @@ window.__ModuleLoader__.load({
       '.dgp-link{display:inline-flex;align-items:center;gap:4px;color:var(--dsw-alias-brand-primary);font-size:12px;text-decoration:none;cursor:pointer;background:transparent;border:0;font-family:inherit;padding:0;}',
       '.dgp-link:hover{text-decoration:underline;}',
       '.dgp-mono{font-family:' + MONO_FONT + ';font-size:11.5px;tab-size:2;}',
+      '.dgp-root ::-webkit-scrollbar{width:10px;height:10px;}',
+      '.dgp-root ::-webkit-scrollbar-track{background:transparent;}',
+      '.dgp-root ::-webkit-scrollbar-thumb{background:var(--dsw-alias-scrollbar-bg-l2);border-radius:6px;border:2px solid transparent;background-clip:content-box;}',
+      '.dgp-root ::-webkit-scrollbar-thumb:hover{background:var(--dsw-alias-scrollbar-hover-l2);background-clip:content-box;}',
       '.dgp-body{display:flex;flex:1 1 auto;min-height:0;overflow:hidden;}',
-      '.dgp-left{display:flex;flex-direction:column;flex:0 0 320px;min-width:260px;min-height:0;border-right:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);}',
+      '.dgp-left{display:flex;flex-direction:column;flex:0 0 320px;min-width:260px;min-height:0;border-right:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-layer-1);box-shadow:1px 0 0 0 color-mix(in srgb, var(--dsw-alias-border-l4) 35%, transparent);}',
+      '.dgp-left-scroll{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;}',
       '.dgp-search{display:flex;align-items:center;gap:7px;flex:none;margin:10px 12px 6px;padding:0 9px;height:30px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);}',
       '.dgp-search:focus-within{border-color:var(--dsw-alias-brand-primary);}',
       '.dgp-search-input{flex:1 1 auto;min-width:0;height:28px;border:0;background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:12.5px;outline:none;}',
       '.dgp-search-input::placeholder{color:var(--dsw-alias-label-secondary);}',
       '.dgp-left-meta{display:flex;align-items:center;gap:8px;flex:none;padding:2px 14px 6px;}',
+      '.dgp-left-controls{display:flex;align-items:flex-end;gap:6px;flex:none;margin:4px 12px 0;}',
+      '.dgp-control{display:flex;flex-direction:column;gap:2px;flex:1 1 0;min-width:0;}',
+      '.dgp-control-label{font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:var(--dsw-alias-label-secondary);}',
+      '.dgp-control-select{width:100%;min-width:0;height:32px;padding:0 6px;border:1px solid var(--dsw-alias-border-l2);border-radius:7px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:11.5px;cursor:pointer;}',
+      '.dgp-control-select:hover{border-color:var(--dsw-alias-border-l3);}',
+      '.dgp-control-select:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px;}',
+      '.dgp-control-reset{display:inline-flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;border:1px solid var(--dsw-alias-border-l2);border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;}',
+      '.dgp-control-reset:hover{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);}',
+      '.dgp-control-reset:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px;}',
       '.dgp-left-count{font-size:10.5px;color:var(--dsw-alias-label-secondary);}',
+      '.dgp-group-head{display:flex;align-items:center;gap:6px;margin:10px 0 4px;padding:0 3px;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--dsw-alias-label-secondary);}',
+      '.dgp-group-head::after{content:"";flex:1 1 auto;height:1px;background:var(--dsw-alias-border-l2);}',
       '.dgp-left-empty{padding:16px 14px;}',
       '.dgp-left-nomatch{margin:20px 14px;color:var(--dsw-alias-label-secondary);font-size:12px;}',
-      '.dgp-plugin-list{display:flex;flex-direction:column;gap:4px;flex:1 1 auto;min-height:0;overflow:auto;padding:2px 10px 10px;}',
-      '.dgp-plugin-row{display:flex;align-items:flex-start;gap:9px;width:100%;padding:8px 9px;border-radius:9px;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;text-align:left;}',
-      '.dgp-plugin-row:hover{background:var(--dsw-alias-bg-layer-2);}',
-      '.dgp-plugin-row-on{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-2);}',
+      '.dgp-plugin-list{display:flex;flex-direction:column;gap:6px;flex:0 0 auto;min-height:0;padding:2px 10px 10px;}',
+      '.dgp-plugin-row{display:flex;align-items:flex-start;gap:9px;width:100%;padding:9px 10px;border-radius:9px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);cursor:pointer;text-align:left;}',
+      '.dgp-plugin-row:hover{border-color:var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-layer-3);}',
+      '.dgp-plugin-row-on{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-3);box-shadow:inset 3px 0 0 0 var(--dsw-alias-brand-primary);}',
       '.dgp-plugin-row:disabled{opacity:.6;cursor:default;}',
       '.dgp-plugin-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;flex:none;border-radius:8px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-base);color:var(--dsw-alias-brand-primary);}',
-      '.dgp-plugin-main{display:flex;flex-direction:column;gap:1px;flex:1 1 auto;min-width:0;}',
+      '.dgp-plugin-main{display:flex;flex-direction:column;gap:2px;flex:1 1 auto;min-width:0;}',
       '.dgp-plugin-name{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.dgp-plugin-meta{display:flex;gap:6px;min-width:0;font-size:10.5px;color:var(--dsw-alias-label-secondary);}',
+      '.dgp-plugin-author-foreign{color:var(--dsw-alias-state-warn-primary);}',
       '.dgp-plugin-author{display:flex;align-items:center;gap:4px;min-width:0;font-size:10.5px;color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.dgp-plugin-author svg{flex:none;opacity:.75;}',
       '.dgp-plugin-author-none{color:var(--dsw-alias-state-warn-primary);}',
       '.dgp-plugin-ver{flex:none;}',
-      '.dgp-plugin-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left;}',
-      '.dgp-plugin-badges{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:none;}',
+      '.dgp-plugin-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;}',
+      '.dgp-plugin-badges{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:flex-start;gap:3px;flex:0 1 auto;max-width:44%;}',
       '.dgp-badge{display:inline-flex;align-items:center;padding:0 6px;height:16px;border-radius:999px;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font-size:9.5px;font-weight:600;white-space:nowrap;}',
       '.dgp-badge[data-tone="success"]{border-color:var(--dsw-alias-state-success-primary);color:var(--dsw-alias-state-success-primary);}',
       '.dgp-badge[data-tone="warn"]{border-color:var(--dsw-alias-state-warn-primary);color:var(--dsw-alias-state-warn-primary);}',
       '.dgp-badge[data-tone="danger"]{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);}',
       '.dgp-scan-warn{padding:0 14px 6px;}',
       '.dgp-scan-warn-line{margin:2px 0;font-size:10.5px;color:var(--dsw-alias-state-warn-primary);overflow-wrap:anywhere;}',
-      '.dgp-history{display:flex;flex-direction:column;gap:4px;flex:none;padding:9px 12px 12px;border-top:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);max-height:200px;overflow:auto;}',
-      '.dgp-history-head{display:flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary);}',
-      '.dgp-history-title{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;}',
+      '.dgp-history{display:flex;flex-direction:column;gap:4px;flex:none;margin-top:8px;padding:8px 12px 10px;border-top:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-layer-2);}',
+      '.dgp-history-open{gap:5px;padding-bottom:14px;}',
+      '.dgp-history-open .dgp-history-toggle{margin-bottom:4px;}',
+      '.dgp-history-toggle{display:flex;align-items:center;gap:6px;width:100%;min-height:32px;padding:0;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer;text-align:left;}',
+      '.dgp-history-toggle:hover{color:var(--dsw-alias-label-primary);}',
+      '.dgp-chevron-open{transform:rotate(90deg);}',
+      '.dgp-history-toggle svg{transition:transform .12s;}',
+      '.dgp-history-title{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--dsw-alias-label-primary);}',
       '.dgp-history-empty{margin:2px 0 0;font-size:11px;color:var(--dsw-alias-label-secondary);}',
       '.dgp-history-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:7px;color:var(--dsw-alias-label-primary);text-decoration:none;font-size:11.5px;border:1px solid transparent;}',
       '.dgp-history-row:hover{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-border-l1);}',
@@ -7349,10 +7721,10 @@ window.__ModuleLoader__.load({
       '.dgp-publish-hint[data-tone="warn"]{color:var(--dsw-alias-state-warn-primary);}',
       '.dgp-publish-hint[data-tone="fail"]{color:var(--dsw-alias-state-error-primary);}',
       '.dgp-publish-actions{display:flex;align-items:center;gap:8px;flex:none;}',
-      '.dgp-page-tabs{display:flex;align-items:center;gap:4px;flex:none;padding:8px 20px 0;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-base);}',
-      '.dgp-page-tab{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border:1px solid transparent;border-bottom:2px solid transparent;border-radius:8px 8px 0 0;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:500;cursor:pointer;}',
-      '.dgp-page-tab:hover{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);}',
-      '.dgp-page-tab[data-on="1"]{color:var(--dsw-alias-brand-primary);border-bottom-color:var(--dsw-alias-brand-primary);}',
+      '.dgp-page-tabs{display:flex;align-items:center;gap:6px;flex:none;padding:10px 20px;border-bottom:1px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-layer-1);}',
+      '.dgp-page-tab{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12.5px;font-weight:600;cursor:pointer;transition:background .12s,border-color .12s,color .12s;font-weight:500;cursor:pointer;}',
+      '.dgp-page-tab:hover{background:var(--dsw-alias-bg-layer-3);border-color:var(--dsw-alias-border-l3);}',
+      '.dgp-page-tab[data-on="1"]{background:color-mix(in srgb, var(--dsw-alias-brand-primary) 18%, var(--dsw-alias-bg-layer-2));border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary);box-shadow:inset 0 -2px 0 0 var(--dsw-alias-brand-primary);}',
       '.dgp-page-tab:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px;}',
       '.dgp-page-tab-label{white-space:nowrap;}',
       '.dgp-page{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow:auto;}',
@@ -7366,8 +7738,8 @@ window.__ModuleLoader__.load({
       '.dgp-platform-group-title{font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--dsw-alias-label-primary);}',
       '.dgp-platform-group-note{font-size:10.5px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere;}',
       '.dgp-platform-row{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base);padding:9px 11px;}',
-      '.dgp-platform-row-on{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-1);}',
-      '.dgp-platform-row-off{opacity:.72;}',
+      '.dgp-platform-row-on{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-1);box-shadow:inset 3px 0 0 0 var(--dsw-alias-state-success-primary);}',
+      '.dgp-platform-row-off{opacity:.86;background:var(--dsw-alias-bg-base);border-color:var(--dsw-alias-border-l1);box-shadow:inset 3px 0 0 0 var(--dsw-alias-label-tertiary);}',
       '.dgp-platform-head{display:flex;align-items:flex-start;gap:9px;}',
       '.dgp-platform-check{flex:none;width:15px;height:15px;margin:2px 0 0;accent-color:var(--dsw-alias-brand-primary);cursor:pointer;}',
       '.dgp-platform-main{flex:1 1 auto;min-width:0;}',
@@ -7626,6 +7998,13 @@ window.__ModuleLoader__.load({
         findPlugin: findPlugin,
         filterPlugins: filterPlugins,
         formatBytes: formatBytes,
+        middleEllipsis: middleEllipsis,
+        sortPlugins: sortPlugins,
+        applyPluginFilter: applyPluginFilter,
+        hasPublished: hasPublished,
+        hasChanges: hasChanges,
+        SORT_IDS: SORT_IDS,
+        FILTER_IDS: FILTER_IDS,
         formatDuration: formatDuration,
         formatRelativeTime: formatRelativeTime,
         formatClock: formatClock,

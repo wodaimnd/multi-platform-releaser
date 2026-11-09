@@ -913,7 +913,11 @@ await test('locale dictionaries are symmetric, complete and used by t()', functi
   }
   const literalKeys = new Set()
   const matches = source.matchAll(/(?<![\w$.])t\('([^']+)'/g)
-  for (const match of matches) literalKeys.add(match[1])
+  for (const match of matches) {
+    // A key ending in "." is the prefix of t("ns." + id) — not a key by itself.
+    if (match[1].endsWith('.')) continue
+    literalKeys.add(match[1])
+  }
   assert.ok(literalKeys.size > 200, 'expected many translated literals, got ' + literalKeys.size)
   const missing = []
   for (const key of literalKeys) {
@@ -921,6 +925,17 @@ await test('locale dictionaries are symmetric, complete and used by t()', functi
     if (!Object.prototype.hasOwnProperty.call(api.en, key)) missing.push('en:' + key)
   }
   assert.deepEqual(missing, [])
+
+  // Concatenated keys cannot be checked statically, so verify each member of the
+  // known dynamic families exists in both dictionaries.
+  for (const id of ['scan', 'recent', 'name', 'attention']) {
+    assert.ok(api.zh['left.sort.' + id], `zh left.sort.${id}`)
+    assert.ok(api.en['left.sort.' + id], `en left.sort.${id}`)
+  }
+  for (const id of ['all', 'unpublished', 'published', 'changes']) {
+    assert.ok(api.zh['left.filter.' + id], `zh left.filter.${id}`)
+    assert.ok(api.en['left.filter.' + id], `en left.filter.${id}`)
+  }
 })
 
 await test('no literal palette colours leak into the client styles', function checkPalette() {
@@ -1010,7 +1025,8 @@ await test('loadState fetches /api/state with the injected token and selects a p
     assert.ok(html.indexOf('还没有预检结果') >= 0)
     assert.ok(html.indexOf('连接 GitHub 账号') < 0, 'token banner hidden while connected')
     assert.ok(html.indexOf('最近发布') >= 0)
-    assert.ok(html.indexOf('octocat/dsh-alpha') >= 0)
+    assert.ok(html.indexOf('aria-expanded="false"') >= 0, 'history starts collapsed')
+    assert.ok(html.indexOf('octocat/dsh-alpha') < 0, 'collapsed history hides the rows')
   } finally {
     store.dispose()
   }
@@ -1650,6 +1666,79 @@ await test('client-side validation catches invalid names, owners and topics', fu
     assert.ok(head.indexOf("'warn'") >= 0, 'partial is a warning, not an error')
     // Both dictionaries carry the phrasing, or one locale falls back silently.
     assert.ok(api.zh['toast.publishPartial'] && api.en['toast.publishPartial'], 'both locales define it')
+  })
+  // -- 路径截断：根与尾部都要在 ----------------------------------------------
+
+    // -- 排序与筛选 ------------------------------------------------------------
+
+  await test('sorting orders the list deterministically', function checkSort() {
+    const mk = (name, publishedAt, dirty) => ({
+      path: 'p/' + name, name, displayName: name, version: '1.0.0',
+      gitStatus: { dirty: Boolean(dirty), modified: dirty ? 1 : 0, untracked: 0, staged: 0 },
+      published: publishedAt ? { lastPublishedAt: publishedAt } : null,
+    })
+    const list = [mk('beta', 100), mk('alpha', 300), mk('gamma', null, true), mk('delta', null)]
+
+    // scan: identity, no reordering
+    assert.deepEqual(api.sortPlugins(list, 'scan').map((p) => p.name), ['beta', 'alpha', 'gamma', 'delta'])
+
+    // recent: published first by timestamp; unpublished keep a stable tail order
+    const recent = api.sortPlugins(list, 'recent').map((p) => p.name)
+    assert.equal(recent[0], 'alpha', 'newest publish first, got ' + recent.join(','))
+    assert.equal(recent[1], 'beta', 'then the older publish, got ' + recent.join(','))
+
+    // name: alphabetical, and repeated calls give the same answer
+    const byName = api.sortPlugins(list, 'name').map((p) => p.name)
+    assert.deepEqual(byName, ['alpha', 'beta', 'delta', 'gamma'])
+    assert.deepEqual(api.sortPlugins(list, 'name').map((p) => p.name), byName, 'stable across calls')
+
+    // attention: unpublished first, then has-changes, then published
+    const att = api.sortPlugins(list, 'attention').map((p) => p.name)
+    assert.ok(att.indexOf('gamma') < att.indexOf('beta'), 'unpublished ranks above published: ' + att.join(','))
+    assert.ok(att.indexOf('delta') < att.indexOf('beta'), 'unpublished ranks above published: ' + att.join(','))
+
+    // The original array must not be mutated: the pane passes snapshot state.
+    assert.deepEqual(list.map((p) => p.name), ['beta', 'alpha', 'gamma', 'delta'], 'input untouched')
+  })
+
+  await test('filtering selects the right rows', function checkFilter() {
+    const mk = (name, published, dirty) => ({
+      path: 'p/' + name, name, displayName: name,
+      gitStatus: { dirty: Boolean(dirty), modified: dirty ? 1 : 0, untracked: 0, staged: 0 },
+      published: published ? { lastPublishedAt: 1 } : null,
+    })
+    const list = [mk('a', true, false), mk('b', false, false), mk('c', true, true), mk('d', false, true)]
+
+    assert.equal(api.applyPluginFilter(list, 'all').length, 4)
+    assert.deepEqual(api.applyPluginFilter(list, 'published').map((p) => p.name), ['a', 'c'])
+    assert.deepEqual(api.applyPluginFilter(list, 'unpublished').map((p) => p.name), ['b', 'd'])
+    assert.deepEqual(api.applyPluginFilter(list, 'changes').map((p) => p.name), ['c', 'd'])
+    // An unknown id falls back to showing everything rather than hiding the list.
+    assert.equal(api.applyPluginFilter(list, 'nonsense').length, 4)
+  })
+await test('path truncation keeps the root and the tail', function checkEllipsis() {
+    const short = 'G:\\AI PGRM\\DSH\\plugins\\apk-lab'
+    assert.equal(api.middleEllipsis(short, 34), short, 'a path that fits is untouched')
+
+    const long = 'C:\\Users\\Shinelon\\AppData\\Local\\Temp\\gr-20261107002434\\plugin'
+    const out = api.middleEllipsis(long, 34)
+    assert.ok(out.indexOf('…') >= 0, 'a long path is collapsed')
+    assert.ok(out.startsWith('C:'), 'the drive survives: ' + out)
+    assert.ok(out.endsWith('plugin'), 'the last component survives: ' + out)
+    // Never cut through a segment when a separator is available.
+    const tailPart = out.slice(out.indexOf('…') + 1)
+    // No fragment is cut mid-segment when a separator is available.
+    assert.ok(tailPart.length > 0, 'the tail is non-empty')
+    assert.ok(!tailPart.startsWith('Users'), 'the tail begins after a separator, not mid-word: ' + tailPart)
+
+    const deep = 'G:\\AI PGRM\\DSH\\plugins\\dsh-offload\\lib\\ui\\panels\\settings'
+    const deepOut = api.middleEllipsis(deep, 34)
+    assert.ok(deepOut.startsWith('G:'), 'root kept: ' + deepOut)
+    assert.ok(deepOut.indexOf('panels') >= 0, 'trailing structure kept: ' + deepOut)
+
+    // Guard rails.
+    assert.equal(api.middleEllipsis('', 34), '', 'empty stays empty')
+    assert.equal(api.middleEllipsis('G', 34), 'G', 'a single character is untouched')
   })
 await test('format helpers and step labels localize correctly', function formatHelpers() {
   assert.equal(api.formatBytes(2048), '2 KB')

@@ -352,8 +352,19 @@ const badOwnerCheck = response.json.checks.find((entry) => entry.id === 'repo')
 check('preflight rejects an owner that is neither the account nor an org', response.status === 200 && badOwnerCheck.status === 'fail' && badOwnerCheck.detail.includes('octocat') && response.json.canPublish === false, JSON.stringify(badOwnerCheck))
 check('owner failure points at the form field', badOwnerCheck.fix === 'form')
 
+// An org that is not the publishing account is a fork under the ownership rule;
+// acknowledge it so this step can test organisation detection.
+const orgPreflightProbe = await apiPost('/preflight', { path: pluginDir, form: { dryRun: true, owner: 'good-org', authorName: 'Octocat', authorEmail: 'octocat@users.noreply.github.com' } })
+await apiPost('/draft', { path: pluginDir, form: {
+  confirmForeignAuthor: true,
+  confirmForeignAuthorFor: orgPreflightProbe.json && orgPreflightProbe.json.ownership ? orgPreflightProbe.json.ownership.fingerprint : '',
+} })
 response = await apiPost('/preflight', { path: pluginDir, form: { dryRun: true, owner: 'good-org' } })
 const goodOrgCheck = response.json.checks.find((entry) => entry.id === 'repo')
+/*
+ * Show why canPublish is false here: the message only prints the repo check,
+ * so an unrelated blocking entry is invisible in the failure output.
+ */
 check('preflight accepts an organisation the token can see', response.json.canPublish === true && goodOrgCheck.status === 'warn', JSON.stringify(goodOrgCheck))
 
 response = await apiPost('/preflight', { path: mismatchDir, form: { dryRun: true, owner: 'octocat', name: 'mismatch-plugin' } })
@@ -384,7 +395,7 @@ await apiPost('/draft', { path: pluginDir, form: null })
 
 /* ── dry-run publish (real files + real git, no remote) ───────────────────── */
 
-response = await apiPost('/publish', { path: pluginDir, form: { dryRun: true, name: 'sample-plugin', topics: ['dsh', 'smoke-test'], authorName: 'Host Sim', authorEmail: 'sim@example.test' } })
+response = await apiPost('/publish', { path: pluginDir, form: { dryRun: true, name: 'sample-plugin', topics: ['dsh', 'smoke-test'], authorName: 'Octocat', authorEmail: 'octocat@users.noreply.github.com' } })
 check('POST /api/publish starts a job', response.status === 200 && /^job_/.test(response.json.jobId || ''))
 const jobId = response.json.jobId
 const { job, timedOut } = await waitJob(jobId)

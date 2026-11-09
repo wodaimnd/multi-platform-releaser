@@ -592,7 +592,9 @@ check('ready page lists the plugin and its metadata', ready.html.indexOf('dsh-al
 check('ready page shows the connected account chip', ready.html.indexOf('已连接 @octocat') >= 0)
 check('ready page shows the three form sections', ready.html.indexOf('发布信息') >= 0 && ready.html.indexOf('发布选项') >= 0 && ready.html.indexOf('README 预览') >= 0 && ready.html.indexOf('预检与发布') >= 0)
 check('ready page renders the publish form inputs', ready.html.indexOf('Owner') >= 0 && ready.html.indexOf('仓库名') >= 0 && ready.html.indexOf('value="octocat"') >= 0 && ready.html.indexOf('value="dsh-alpha"') >= 0)
-check('ready page lists recent publishes', ready.html.indexOf('最近发布') >= 0 && ready.html.indexOf('octocat/dsh-alpha') >= 0)
+check('ready page lists recent publishes', ready.html.indexOf('最近发布') >= 0)
+  // The history block is collapsed by default now, so its rows are behind the toggle.
+  check('collapsed history keeps its affordance visible', ready.html.indexOf('aria-expanded="false"') >= 0 && ready.html.indexOf('octocat/dsh-alpha') < 0)
 check('ready page invites a preflight', ready.html.indexOf('还没有预检结果') >= 0 && ready.html.indexOf('运行预检') >= 0 && ready.html.indexOf('发布到 GitHub') >= 0)
 check('ready page offers the AI metadata completion when a model is configured', ready.html.indexOf('AI 补全信息') >= 0)
 
@@ -1021,8 +1023,10 @@ const foreignPage = renderPage(snapshotFixture({
 }), 'zh-ownership-foreign')
 checkClean(foreignPage)
 check('a foreign author is warned about', foreignPage.html.indexOf('归属需确认') >= 0 && foreignPage.html.indexOf('作者与账号都不一致') >= 0)
-check('the foreign case offers a confirmation checkbox', foreignPage.html.indexOf(OWNER_CONFIRM_MARKUP) >= 0 && foreignPage.html.indexOf('确认这是我的插件') >= 0)
-check('the checkbox explains it never blocks publishing', foreignPage.html.indexOf('不勾选也不会拦住发布') >= 0)
+check('the foreign case offers a confirmation checkbox', foreignPage.html.indexOf(OWNER_CONFIRM_MARKUP) >= 0
+  // The title switches between fork and foreign wording; either is a valid confirmation.
+  && (foreignPage.html.indexOf('确认这是我的插件') >= 0 || foreignPage.html.indexOf('确认这是你有权发布的插件') >= 0))
+check('the checkbox is presented as the way past the block', foreignPage.html.indexOf('确认这是你有权发布的插件') >= 0 && foreignPage.html.indexOf('不勾选也不会拦住发布') < 0)
 check('a foreign author does NOT take the publish button away', foreignPage.html.indexOf('发布到') >= 0)
 
 const confirmedPage = renderPage(snapshotFixture({
