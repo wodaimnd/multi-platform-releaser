@@ -834,3 +834,17 @@ export class Publisher {
 | `node tests/verify-static.mjs` | verifier | package.json exports/files/dsh 字段、cordis.patch.yml、locale meta、icon 合法、client id/panel id/order、无 Harness Client import、只允许 `--dsw-alias-*` |
 
 全部测试必须 `node tests/...` 直接可跑、无第三方依赖、失败退出码非 0、临时目录自清理。
+
+### 8.1 按改动面选套件（不许每轮跑全套）
+
+全套一次约 6–8 分钟，单套件 1–10 秒。改一个 CSS 变量跑全套是纯浪费。
+
+| 本轮改了什么 | 至少跑 |
+|---|---|
+| 纯 CSS / 布局 / 文案 | `client-ssr.check.mjs`（渲染 + 无 React 警告） |
+| 前端逻辑（状态机 / 表单 / 轮询） | `client-smoke.mjs` + `client-ssr.check.mjs` |
+| Host 半（index.js / 路由 / 工具） | `host-sim.mjs` |
+| 发布管线 / 预检 / 平台 / git | `multi-platform.spec.mjs` + `lib-git` + `lib-github` + `providers` |
+| 跨层，或发版前，或大量/复合改动 | `npm run check` + `npm test` + `npm run test:e2e` |
+
+**范围外的套件不算「通过」，只算「本轮未覆盖」** —— 报告里要写清，不能默认正常。

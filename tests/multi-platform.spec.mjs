@@ -944,6 +944,63 @@ async function main() {
     }
   })
 
+  await test('scan cache round-trip restores the derived fields', async () => {
+    /*
+     * The on-disk cache drops `suggested` (a pure derivation, ~200–330 B per plugin)
+     * and `realPath` when it merely repeats `path` (~88 B). Both MUST come back on
+     * read, or the panel silently loses every description and topic while all other
+     * tests keep passing.
+     */
+    const cacheDir = tmpDir('cache-roundtrip-data')
+    const cacheWs = tmpDir('cache-roundtrip-ws')
+    const pluginDir = path.join(cacheWs, 'roundtrip-plugin')
+    await fsp.mkdir(pluginDir, { recursive: true })
+    await fsp.writeFile(path.join(pluginDir, 'package.json'), JSON.stringify({
+      name: 'roundtrip-plugin',
+      version: '3.1.4',
+      type: 'module',
+      description: 'Round-trip fixture. · 缓存往返测试。',
+      keywords: ['dsh', 'roundtrip'],
+      license: 'MIT',
+      exports: { '.': './index.js' },
+      dsh: { bundle: { patch: './cordis.patch.yml' } },
+    }, null, 2) + '\n', 'utf8')
+    await fsp.writeFile(path.join(pluginDir, 'index.js'), 'export function apply() {}\n', 'utf8')
+    await fsp.writeFile(path.join(pluginDir, 'cordis.patch.yml'), '- insert:\n    - id: rt\n      name: roundtrip-plugin\n', 'utf8')
+
+    const cacheStore = new ConfigStore(cacheDir)
+    const cachePublisher = new Publisher({ store: cacheStore, env: {} })
+    try {
+      await cachePublisher.updateSettings({ scanRoots: [cacheWs] })
+      const first = await cachePublisher.scan({ force: true })
+      const live = first.plugins.find((entry) => entry.name === 'roundtrip-plugin')
+      assert.ok(live, 'the fixture plugin is scanned')
+
+      /* What actually landed on disk must be the slim shape. */
+      const onDisk = JSON.parse(await fsp.readFile(path.join(cacheDir, 'scan-cache.json'), 'utf8'))
+      const entryKey = Object.keys(onDisk.entries)[0]
+      const stored = onDisk.entries[entryKey].plugins.find((x) => x.name === 'roundtrip-plugin')
+      assert.ok(stored, 'the plugin is written to the cache')
+      assert.equal(Object.prototype.hasOwnProperty.call(stored, 'suggested'), false, 'suggested is not persisted')
+      assert.equal(Object.prototype.hasOwnProperty.call(stored, 'realPath'), false, 'a redundant realPath is not persisted')
+
+      /* A fresh instance reading the cache must rebuild both. */
+      const reader = new Publisher({ store: new ConfigStore(cacheDir), env: {} })
+      const cached = await reader.scan({ allowCache: true })
+      assert.equal(cached.cached, true, 'the cache was used')
+      const restored = cached.plugins.find((x) => x.name === 'roundtrip-plugin')
+      assert.ok(restored, 'the plugin comes back')
+      assert.ok(restored.suggested && restored.suggested.name === 'roundtrip-plugin', 'suggested.name is rebuilt')
+      assert.deepEqual(restored.suggested.topics.includes('roundtrip'), true, 'suggested.topics is rebuilt')
+      assert.equal(restored.suggested.description.length > 0, true, 'suggested.description is rebuilt')
+      assert.equal(restored.realPath, restored.path, 'realPath falls back to path')
+      assert.equal(cached.plugins.length, first.plugins.length, 'no plugin is duplicated')
+    } finally {
+      await fsp.rm(cacheDir, { recursive: true, force: true })
+      await fsp.rm(cacheWs, { recursive: true, force: true })
+    }
+  })
+
   await test('preflight rejects an invalid publish name as blocking', async () => {
     await publisher.updatePlatforms({ npm: { enabled: true } })
     await publisher.saveDraft(pluginDir, { publishName: 'Bad Name!' })

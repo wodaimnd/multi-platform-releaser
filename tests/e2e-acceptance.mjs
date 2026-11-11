@@ -348,7 +348,7 @@ try {
     JSON.stringify(registrations.routes),
   )
   check('apply() registers one index tap', registrations.taps.length === 1)
-  check('apply() registers exactly one agent tool github_publisher', registrations.tools.length === 1 && registrations.tools[0].name === 'github_publisher')
+  check('apply() registers exactly one agent tool multi_platform_releaser', registrations.tools.length === 1 && registrations.tools[0].name === 'multi_platform_releaser')
 
   const injectedHtml = registrations.taps[0]('<html><head><meta charset="utf-8"></head><body><div id="root"></div></body></html>')
   const injectedMatch = /window\.__DSH_GITHUB_PUBLISHER__=(\{.*?\});<\/script>/.exec(injectedHtml)
@@ -451,7 +451,7 @@ try {
   expectError('GET on a POST-only route → 405', response, 405, 'method-not-allowed')
   response = await callHost({ method: 'GET', pathname: apiPath('/health') })
   const health = expectOk('GET /api/health → ok', response)
-  checkEqual('health reports name/version', { name: health.name, version: health.version }, { name: 'dsh-github-publisher', version: PACKAGE_VERSION })
+  checkEqual('health reports name/version', { name: health.name, version: health.version }, { name: 'multi-platform-releaser', version: PACKAGE_VERSION })
 
   /* ── installed state / scan ─────────────────────────────────────────────── */
 
@@ -745,6 +745,13 @@ try {
     authorEmail: AUTHOR.email,
   }
   response = await hostPost('/preflight', { path: betaDir, form: formB })
+  const preflightBProbe = expectOk('POST /api/preflight (beta probe) → 200', response)
+  // Publishing into an org that is not the signed-in account is a "foreign" case:
+  // the ownership gate blocks it until the operator acknowledges, exactly as the
+  // panel's checkbox does. Bind the acknowledgement to this plugin's fingerprint.
+  formB.confirmForeignAuthor = true
+  formB.confirmForeignAuthorFor = preflightBProbe.ownership?.fingerprint || ''
+  response = await hostPost('/preflight', { path: betaDir, form: formB })
   const preflightB = expectOk('POST /api/preflight (beta) → 200', response)
   const betaFiles = Object.fromEntries((preflightB.preview?.files || []).map((entry) => [entry.file, entry]))
   checkEqual('existing beta README is kept', `${betaFiles['README.md']?.action}`, 'keep')
@@ -752,6 +759,7 @@ try {
   check('beta preview writes no README content', preflightB.preview?.writes?.every((entry) => entry.file !== 'README.md') === true && betaFiles['README.md']?.content === null)
   check('beta preview still plans LICENSE/.gitignore/package.json', ['LICENSE', '.gitignore', 'package.json'].every((file) => (preflightB.preview?.writes || []).some((entry) => entry.file === file)), (preflightB.preview?.writes || []).map((entry) => entry.file).join(','))
   check('beta preflight is publishable for the org owner', preflightB.canPublish === true && preflightB.plan?.owner === 'acme-org', JSON.stringify(preflightB.blocking))
+  check('an org that is not the account is treated as foreign until confirmed', preflightBProbe.ownership?.status === 'foreign' && preflightBProbe.blocking?.includes('ownership') === true, JSON.stringify(preflightBProbe.ownership?.status))
 
   response = await hostPost('/publish', { path: betaDir, form: formB })
   const publishB = expectOk('POST /api/publish (beta) → jobId', response)
@@ -787,6 +795,15 @@ try {
   const alphaPatchCallsBefore = mock.requests.filter((entry) => entry.method === 'PATCH' && entry.pathname === `/repos/octocat/${ALPHA_DIR_NAME}`).length
   const alphaReleasesBefore = [...mock.releases.keys()].filter((key) => key.startsWith(`octocat/${ALPHA_DIR_NAME}@`)).length
 
+  // After the first publish the manifest carries `author`, so the ownership check
+  // now compares that author with the signed-in account. The fixture's author is a
+  // synthetic "E2E Bot <e2e@example.test>" (not the login, not a GitHub noreply
+  // address), which the gate rightly treats as foreign until acknowledged.
+  formA.confirmForeignAuthor = true
+  {
+    const probe = expectOk('POST /api/preflight (alpha republish probe) → 200', await hostPost('/preflight', { path: alphaDir, form: formA }))
+    formA.confirmForeignAuthorFor = probe.ownership?.fingerprint || ''
+  }
   response = await hostPost('/publish', { path: alphaDir, form: formA })
   const publishA2 = expectOk('POST /api/publish (alpha, again) → jobId', response)
   const { job: jobA2, timedOut: timedOutA2 } = await waitForJob(publishA2.jobId)

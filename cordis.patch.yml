@@ -10,3 +10,24 @@
 - insert:
     - id: multi-platform-releaser
       name: multi-platform-releaser
+    # Ships this package's own AI-facing manual. A second instance of the stock
+    # dsh-skill-filesystem provider is mounted on <package>/skills/ so the skill
+    # travels with the bundle (npm / GitHub / local checkout alike) and appears
+    # in the session catalog without any user-level install step.
+    #
+    # The root is resolved from the package identity anchored at the DSH profile
+    # (Loader baseUrl), never as a path concatenated onto baseUrl. Note this
+    # package's `exports` map does NOT publish "./package.json", so the
+    # `resolve('<pkg>/package.json')` idiom used by other bundles throws
+    # ERR_PACKAGE_PATH_NOT_EXPORTED here; the entry point is resolved instead and
+    # its dirname is the package root. Two specs are tried because the installed
+    # name differs from the published one: a profile that link-installs this
+    # checkout sees `dsh-github-publisher`, while an npm/GitHub install sees
+    # `multi-platform-releaser`.
+    - id: multi-platform-releaser-skills
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        providerName: multi-platform-releaser
+        includeDefaultRoots: false
+        watch: false
+        bundledSkillDir: !!js (function () { var path = process.getBuiltinModule('node:path'); var mod = process.getBuiltinModule('node:module'); var b = String(baseUrl || ''); var anchors = [b, b + '/', b + '\\']; var specs = ['multi-platform-releaser', 'dsh-github-publisher']; for (var i = 0; i < anchors.length; i++) { var req = null; try { req = mod.createRequire(anchors[i]) } catch (error) { req = null } if (req !== null) { for (var j = 0; j < specs.length; j++) { try { return path.join(path.dirname(req.resolve(specs[j])), 'skills') } catch (error) {} } } } return path.join(b, 'node_modules', 'dsh-github-publisher', 'skills') })()

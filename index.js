@@ -653,6 +653,11 @@ export function apply(ctx) {
         'Publish a local DSH plugin to the user\'s repositories end-to-end: discover local plugin directories, preflight the release, fill in repository metadata, generate README/LICENSE/.gitignore and complete package.json, create or reuse the repository, commit, push, tag and create a GitHub Release.',
         'Targets any of GitHub / Gitee / Codeberg (multi-select — one commit is pushed to every ticked remote, each with its own repo and release) and can additionally publish to the npm registry. Operations are the exact same ones the 「多代码平台发布插件」 page (left sidebar) uses.',
         `Actions: ${actions.join(', ')}. Use "state" first to see the account and local plugins. Use "publish" with {path, form} to publish; it waits for the job and returns the result. Use "suggest" to draft description/topics/release notes with the configured DeepSeek model.`,
+        // The bundled SKILL.md is what turns "the tool exists" into "the agent
+        // knows how to drive it"; without this pointer the model has to re-derive
+        // the preflight→publish order, form fields, and partial-result handling
+        // from parameter names alone.
+        'A companion skill 「multi-platform-releaser」 ships with this plugin (bundled SKILL.md, auto-discovered). It teaches the full workflow: the state→preflight→publish→job order, every form field, per-platform differences (Gitee has no topics; Codeberg releases may be refused), blocking-check fixes, ownership confirmation, error codes, and partial/timeout handling. Load it with the skill tool before multi-step or unfamiliar publishing work.',
       ].join(' '),
       parameters: {
         type: 'object',
@@ -723,15 +728,7 @@ export function apply(ctx) {
             else throw new PublisherError('bad-request', 'action=token 需要 token 字符串，或 detect=true')
             break
           }
-          case 'suggest':
-          return [
-            `AI 补全（${value.provider}/${value.model}）：`,
-            ...(value.suggestion?.description ? [`- 英文描述：${value.suggestion.description}`] : []),
-            ...(value.suggestion?.descriptionZh ? [`- 中文简介：${value.suggestion.descriptionZh}`] : []),
-            ...(value.suggestion?.topics ? [`- topics：${value.suggestion.topics.join(', ')}`] : []),
-            ...(value.suggestion?.releaseNotes ? ['', 'Release 说明：', value.suggestion.releaseNotes] : []),
-          ].join('\n')
-        case 'history': {
+          case 'history': {
             const history = await store.loadHistory()
             value = { history }
             break
@@ -740,6 +737,16 @@ export function apply(ctx) {
             throw new PublisherError('bad-request', `未知 action：${action}`, { details: { actions } })
         }
         value.summary = toolSummary(action, value)
+        // One reminder per call, at the end of the payload the model actually
+        // reads: the tool description can be truncated out of context, but this
+        // line arrives with every result.
+        // The guard must test the reminder phrase itself, not the skill name —
+        // history/publish summaries legitimately mention `multi-platform-releaser`
+        // (it is a published package), which made a name-based check skip the
+        // reminder entirely.
+        if (typeof value.summary === 'string' && !value.summary.includes('配套 skill「multi-platform-releaser」')) {
+          value.summary += '\n\n（提示：本插件带有配套 skill「multi-platform-releaser」，完整流程、表单字段、各平台差异与报错处理都在里面；多步或不熟悉的发布操作前先用 skill 工具加载它。）'
+        }
         return value
       },
     }

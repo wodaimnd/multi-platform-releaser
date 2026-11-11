@@ -95,40 +95,44 @@ docs    docs.github.com / docs.npmjs.com 官方说明（固定，不随 Enterpri
 > 因此没有在你的 GitHub 上建仓、也没有推任何东西。npm 侧走 `--dry-run`，没有向 registry 上传。
 > 真要实发时把「演练」取消勾选即可——那一步需要你的真实 token，代码路径已经在这里跑通。
 
-## 4. 自动化测试（814 项，本机全绿）
+## 4. 自动化测试（924 项，本机全绿）
+
+> 这一节随每轮改动更新。数字是**实测**的，不是估算：`npm run check` + `npm test` + `node tests/e2e-acceptance.mjs` 的实际输出。
 
 ```
-static      122/122      静态契约：manifest / locale 对称 / 图标 / 客户端注册 / 无裸色值
-host-sim     99/99       Host HTTP 契约（含 platforms / version/bump / sync/plan / 预检分支）
-multi        37/37       平台注册表 / 配置归一化 / 步骤编排 / npm CLI 定位 / registry 校验 / 错误码
-readme-append 7/7        README 只追加更新日志：幂等 / 原文保留 / 新版本置顶 / dry-run 不写盘
-version-sync  9/9        版本声明一致性：扫描 / 漂移 / 自动同步 / bump 连带写跟随者
-npm-version-guard 7/7    npm 版本守卫：重复才拦、低于 latest 只警告、一次越过远端（§4r）
-npm-name-scope 6/6       发布用包名每插件独立，陈旧全局值不再劫持其他插件
-lib-git      23/23       临时仓库、bare remote、askpass、abort
-lib-github   29/29       mock API：401/403/404/422/限额/重试
-smoke        33/33       浏览器半边状态机（伪 React）
-ssr         189/189      真 React SSR：含平台勾选 / 平台配置 / 版本同步 三页 × 中英
-                         + 上手向导 / 绑定外链 / Enterprise 派生 / 帮助页签
-                         + 自建 registry（http://127.0.0.1:4873）不走伪造 token 页
-                         + 阻断项高亮排序 / 卡片折叠 / 低于远端只警告（§4r）
-e2e         253/253      从零端到端：真实 Host + 真实 git 推本地 bare + mock GitHub
+check  123/123   静态契约：manifest / locale 对称 / 图标 / 客户端注册 / 裸色值 / CSS 数组 /
+                  script↔test 对账 / 无 node_modules、无嵌套 .git、无临时产物
+host-sim   99/99  Host HTTP 契约（含 platforms / version/bump / sync/plan / 预检分支 / 归属闸门）
+multi      62/62  平台注册表 / 配置归一化 / 步骤编排 / 逐平台端点解析 / npm 守卫 / 归属判定
+readme-append 7/7 README 只追加：幂等 / 原文保留 / 新版本置顶 / dry-run 不写盘
+version-sync  9/9 版本声明一致性：扫描 / 漂移 / 自动同步 / bump 连带写 follower
+npm-version-guard 7/7  重复才拦、低于 latest 只警告
+npm-name-scope 6/6     发布用包名每插件独立
+lib-git      30/30 临时仓库 / bare remote / askpass / abort / 失败分类
+lib-github   18/18 mock API：401/403/404/422/限额/重试
+providers    29/29 三个平台的 URL / topics / release 差异
+smoke        38/38 浏览器半边状态机（伪 React）：含排序筛选、partial toast、poll ladder
+ssr         240/240 真 React SSR：三页 × 中英 + 向导 + 帮助 + 归属确认 + 分平台结果卡
+e2e         256/256 从零端到端：真实 Host + 真实 git 推本地 bare + mock GitHub + 归属确认路径
 ```
 
-复现：
+合计 **924**（123 + 99 + 62 + 7 + 9 + 7 + 6 + 30 + 18 + 29 + 38 + 240 + 256）。
+
+### 4-1 验证纪律：按改动面选套件，不要每轮跑全套
+
+**只改 UI / 纯 CSS** → `client-ssr.check.mjs`（渲染 + 无 React 警告）
+**前端逻辑** → `client-smoke.mjs` + `client-ssr.check.mjs`
+**Host / 预检 / 发布管线** → `multi-platform.spec.mjs` + `host-sim.mjs`
+**跨层（改了 lib/ 又改 client/，或发版前）** → 全套 + e2e
+
+理由：全套一次约 6–8 分钟，单套件 1–10 秒。改一个 CSS 变量跑全套是纯浪费。
+
+复现（Windows）：
 
 ```powershell
-cd "C:\Users\Shinelon\Desktop\AI\dsh-github-publisher-0.1.0"
-# SSR 需要一个真 React 运行时（只在这一项需要）
-mkdir G:\AI PGRM\plugn\.react-runtime; cd G:\AI PGRM\plugn\.react-runtime
-'{ "name": "react-runtime", "private": true }' | Set-Content package.json
-npm i react@18 react-dom@18
-$env:DSH_HARNESS_REACT_ROOT = "G:\AI PGRM\plugn\.react-runtime\package.json"
-
-cd "C:\Users\Shinelon\Desktop\AI\dsh-github-publisher-0.1.0"
-node tests/verify-static.mjs; node tests/host-sim.mjs; node tests/multi-platform.spec.mjs
-node tests/lib-git.spec.mjs; node tests/lib-github.spec.mjs
-node tests/client-smoke.mjs; node tests/client-ssr.check.mjs; node tests/e2e-acceptance.mjs
+cd "G:\AI PGRM\DSH\plugins\dsh-github-publisher"
+$env:DSH_HARNESS_REACT_ROOT = "G:\AI PGRM\plugn\.react-runtime"
+npm run check; npm test; npm run test:e2e
 ```
 
 ## 4b. 反馈修复：自建 registry 的「管理 npm 的 API」曾跳到捏造地址
@@ -479,7 +483,7 @@ selectedPath / activeTab。发布、预检、扫描后都会触发一次静默�
 
 本节当时的清单是 `773 项全绿`：static 122 / host-sim 99 / multi 37 / readme-append 7 /
 lib-git 23 / lib-github 29 / smoke 33 (+2 缓存用例) / ssr 170 / e2e 253
-（当前总数见 §4，**814 项**）
+（本节写于当时，**数字会过期**；以 §4 的实测值为准）
 
 ## 4l. npm token 改为从 .npmrc 自动读取（不再手动粘贴）
 
@@ -914,7 +918,7 @@ url = http://127.0.0.1:4873/-/web/detail/@jntm114514%2fdsh-github-publisher
 `tests/client-ssr.check.mjs` 新增 **5** 项：低于远端时面板说「本次可以发布，但 latest 会退回」、
 带出 `1.0.2` 的越级 bump 建议、且**绝不**出现「已经存在这个版本号」。
 
-本节合计增加 12 项（802 → **814**）：
+本节合计增加 12 项（802 → **814**；这是那一轮的快照，当前值见 §4）：
 
 ```
 static 122 / host-sim 99 / multi 37 / readme-append 7 / version-sync 9 /
@@ -1481,3 +1485,191 @@ form.platforms 赋值           ✓
 
 `G:\\AI PGRM\\plugn\\backup\\publish3-*`（三个插件发布前）
 `G:\\AI PGRM\\plugn\\backup\\publisher-toolrename-20261108-150537`（插件本轮改动前）
+
+## 16. skill 绑定 + 技术债清理（本轮）
+
+### 16-1 随包 skill：两条提醒通道
+
+`skills/multi-platform-releaser/SKILL.md`（4602 字符，预算 8192 内）由宿主自动发现，
+描述 253 字符（预算 500 内）。但「有 skill 文件」不等于「AI 会用」，所以加了两条提醒：
+
+| 通道 | 位置 | 为什么两条都要 |
+|---|---|---|
+| A · 工具描述 | `buildToolDefinition().description` 末段 | 每次调用工具前模型都看得到 |
+| B · 调用返回 | `execute()` 在 `value.summary` 末尾追加 | 描述可能被截出上下文，返回必读 |
+
+通道 B 的守卫检查**提醒短语本身**而不是包名：
+
+```js
+if (!value.summary.includes('配套 skill「multi-platform-releaser」')) { … }
+```
+
+第一版写成 `includes('multi-platform-releaser')`，而 `history`/`publish` 的返回里本来就含
+这个包名（它是发过的包），守卫直接跳过 → **提醒一次都没出现**。实测 5 个 action 各 1 次后修复。
+
+### 16-2 修掉三个真缺陷
+
+**① 发布用的端点解析与预检不一致（会造成「预检通过、发布打向 api.github.com」）**
+
+`lib/publisher.mjs` 里有两套解析：
+
+```
+规范链（hostApiBase）: 平台 apiBase → form → config.defaults(仅 github) → provider 默认
+auth 步骤（旧）       : 平台 apiBase → provider 默认          ← 漏了 config.defaults
+```
+
+后果在 e2e 里直接暴露：预检 `auth @octocat ✓`，紧接着发布 `auth` 报
+`fetch failed`。真实影响是「设置里填了自建/企业端点，预检看起来正常，一发布就失败」。
+
+修法：抽出 `apiBaseOf(id)` / `webBaseOf(id)` 两个按平台取值的函数，preflight、auth、
+push 全部改调它们，不留第二套。
+
+**② 列表面板永远看不到「插件嵌套在别人仓库里」（fast 模式从不探父仓库）**
+
+`lib/git.mjs` 的 `gitFacts`：目录没有自己的 `.git` 就立刻返回 `parentRepo: null`，
+注释写着「调用方会重新检查选中插件」——但 `state`（面板列表）就是走 fast 模式，
+所以这条警告在用户最需要它的地方始终为 null，只在 preflight 才出现。
+
+修法：给 `gitFacts` 加 `{ probeParent }` 开关，默认关闭（保持扫描速度：仅对**已识别为插件**
+的目录开），scanner 的 fast 分支传 `true`。实测 2 个插件 169ms，普通文件夹不额外跑 git。
+
+**③ push 全平台失败时丢掉根因码**
+
+多平台改造后 `push` 变成按平台循环，全失败时统一抛 `git-push-all-failed`，
+把每个平台已归因好的 `git-push-rejected` / `git-network` 覆盖掉。用户看到「所有平台推送失败」，
+看不到「远端已有不同提交历史」这个能直接指导操作的真因。
+
+修法：只有一个平台失败时直接沿用它的 code；多平台失败时用 `details.hosts` 保留每个平台的码。
+
+### 16-3 顺手清掉的死代码
+
+`index.js` 的 `execute()` switch 里有一个**不可达的重复 `case 'suggest'`**（早先粘贴残留）：
+上面已有 `case 'suggest'` 并 `break`，这个永远命中不到；它 `return` 的是字符串而非对象，
+一旦有人调整 case 顺序，后面的 `value.summary = …` 会把属性挂到原始字符串上。
+已删除（-530 字节），`case 'suggest'` 回到应有的两处（`toolSummary` 各一）。
+
+### 16-4 e2e 里过时/环境相关的断言（不是产品缺陷）
+
+| 断言 | 原期望 | 实际 | 处置 |
+|---|---|---|---|
+| 工具名 | `github_publisher` | `multi_platform_releaser` | 改断言（早已改名） |
+| health.name | `dsh-github-publisher` | `multi-platform-releaser` | 改断言 |
+| beta 发到组织 | 直接可发 | 归属闸门判 foreign 阻断 | 补确认（与面板同一路径） |
+| alpha 二次发布 | 直接可发 | 同上（首次发布把 author 写进 manifest） | 补确认 |
+| push 错误码 | `git-push-rejected` | `git-push-all-failed` | **改产品**（见 16-2 ③） |
+
+alpha 二次发布这条值得记：首次发布时 manifest 无 `author`，归属按 owner 判为 own；
+发布把 `author: "E2E Bot <e2e@example.test>"` 写进去，二次发布就看作者了。
+真实用户不受影响——`wodaimnd@users.noreply.github.com` 的 noreply 邮箱会解析出登录名，
+命中 `tied → own`。是夹具用了非 noreply 的合成邮箱。
+
+### 16-5 本轮测试
+
+`npm run check` 123/123 · `npm test` 全套 exit 0 · `npm run test:e2e` **256/256**。
+
+e2e 的失败数变化记录了修复过程：62 → 38 → 6 → 4 → **0**。
+
+### 16-6 备份
+
+```
+backup/index-deadcase-20261110140219.js            删死 case 前
+backup/publisher-endpoint-20261110143538.mjs       端点解析统一前
+backup/e2e-ownership-20261110143636.mjs            e2e beta 归属确认前
+backup/e2e-alpha-republish-20261110143739.mjs      e2e alpha 二次发布前
+backup/e2e-stale-asserts-20261110143756.mjs        e2e 过时断言修正前
+backup/git-facts-20261110144041.mjs                gitFacts probeParent 前
+backup/scanner-fast-parent-20261110144052.mjs      scanner fast 探父仓库前
+backup/publisher-push-code-20261110144147.mjs      push 根因码修复前
+backup/verification-20261110144432.md              VERIFICATION §4 改写前
+```
+
+## 17. scan-cache 瘦身（只存必要字段）
+
+### 17-1 先量，不猜
+
+监控到的现状：`$DSH_HOME/github-publisher/scan-cache.json` **269,162 B（262.9 KB）**，
+4 个 entry，最大的一个装了 43 个插件。逐字段量出来：
+
+| 字段 | 体积 | 占比 |
+|---|---|---|
+| `suggested` | 327 B/plugin | 29% |
+| `description` | 162 B/plugin | 15% |
+| `gitStatus` | 74 B/plugin | 7% |
+| `path` + `realPath` | 176 B/plugin | 16% |
+| 其余 30+ 个字段 | ~435 B/plugin | 33% |
+| **合计** | **1114 B/plugin** | |
+
+### 17-2 判据：什么能删，什么不能
+
+先确认缓存里的 plugin 是不是下游真的在用——**不是**：
+
+```
+preflight     lib/publisher.mjs:1312  await inspectPlugin(resolved)   ← 重新检查
+publish       lib/publisher.mjs:2409  await inspectPlugin(plugin.path) ← 重新检查
+scanResponse  lib/publisher.mjs:3268  await inspectPlugin(resolved)   ← 重新检查
+```
+
+**三处都重新 inspect**，所以缓存只服务面板列表与详情渲染。于是：
+
+| 字段 | 处置 | 理由 |
+|---|---|---|
+| `suggested` | **不存** | `suggestFor(plugin)` 的纯函数产物，只依赖 name/description/descriptionZh/keywords/license/homepage —— 这些字段本身就在缓存里，读取时重算即可 |
+| `realPath`（与 path 相同） | **不存** | 43 个插件里 42 个与 `path` 完全一样，各占 88 B |
+| `realPath`（与 path 不同） | **必须存** | 它是去重键（`scanner.mjs:197 byPath.get(plugin.realPath)`），符号链接插件靠它避免被扫两次 |
+| `gitStatus` | 无需处理 | fast 模式本来就不写它（只有完整模式写） |
+| 其余字段 | **全部保留** | `normalizePlugin` 会读 homepage / license / licenseFile / readmeFile / iconPath / repository / authorUrl / realPath；只留列表用的十来个字段会让详情面板缺数据 |
+
+删 `suggested` 时踩过一个坑：`suggestFor` 定义在 `scanner.mjs`，`publisher.mjs` 原本只导入了
+`inspectPlugin` / `sanitizeRepoName`，必须补导入才能在 hydrate 时重算。
+
+### 17-3 实测结果
+
+同一份真实数据（43 个插件）：
+
+| | 瘦身前 | 瘦身后 | 变化 |
+|---|---|---|---|
+| 文件大小 | 269,162 B | 205,191 B | **−63,971 B（−23.8%）** |
+| 单 plugin（小样本实测） | 1,182 B | 867 B | −315 B（−27%） |
+
+兼容性（旧缓存含 `suggested` 与重复 `realPath`）：
+
+```
+读旧缓存      命中 ✓
+补回 suggested  29/29
+补回 realPath   29/29
+```
+
+回填时用**重算值覆盖**旧值——实测把 `suggested` 改成 `{name:'OLD-VALUE'}` 塞回缓存，
+读回后被正确重算覆盖，不会读出一个过期描述。
+
+### 17-4 符号链接回归（最容易踩的地方）
+
+```
+path      …\ws\linked-plugin          （符号链接）
+realPath  …\real-plugin-src           （真实目录）
+落盘含 realPath : ✓ 已保留（两者不同）
+读回 realPath   : ✓ 精确
+插件数未翻倍    : ✓ (30)               ← 去重键仍有效
+```
+
+### 17-5 新增的守护断言
+
+`multi-platform.spec.mjs` 加了一条 **scan cache 往返**测试（61 → 62）：断言瘦身后
+`suggested`/`realPath` 不在盘上、读回后都补齐、插件数不变。
+
+这条断言经过**反向验证**——不是「永远通过」：临时把 hydrate 的 `suggested` 改成
+`undefined`，测试立刻失败并精确点名：
+
+```
+FAIL  scan cache round-trip restores the derived fields — suggested.name is rebuilt
+```
+
+否则以后有人改瘦身逻辑忘记 hydrate，面板会静默丢掉所有描述与 topics，而其余测试全绿。
+
+### 17-6 备份
+
+```
+backup/publisher-scan-cache-20261110144940.mjs    首次剔除 suggested 前
+backup/publisher-cache-dedup-20261110145016.mjs   再去掉重复 realPath 前
+backup/multi-platform-20261110145255.mjs          新增缓存往返断言前
+```

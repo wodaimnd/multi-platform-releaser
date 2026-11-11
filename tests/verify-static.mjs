@@ -391,7 +391,7 @@ const badCssVars = [...new Set([...cssVarUses, ...cssVarDeclarations])].filter((
   for (const name of ['config.json', 'history.json', 'drafts.json']) if (await exists(name)) leakedDataFiles.push(name)
   check('no data-dir files leaked into the repository root', leakedDataFiles.length === 0, leakedDataFiles.join(','))
   const rootEntries = (await dirEntries('.')).map((entry) => entry.name).sort()
-  const allowedRoot = new Set(['CONTRACT.md', 'README.md', 'client.js', 'cordis.patch.yml', 'icon.svg', 'index.js', 'lib', 'locale', 'package.json', 'tests', 'LICENSE', 'VERIFICATION.md', '.gitignore', '.git'])
+  const allowedRoot = new Set(['CONTRACT.md', 'README.md', 'client.js', 'cordis.patch.yml', 'icon.svg', 'index.js', 'lib', 'locale', 'skills', 'package.json', 'tests', 'LICENSE', 'VERIFICATION.md', '.gitignore', '.git'])
   const unexpectedRoot = rootEntries.filter((name) => !allowedRoot.has(name))
   check('repository root contains only declared project files', unexpectedRoot.length === 0, unexpectedRoot.join(','))
 
